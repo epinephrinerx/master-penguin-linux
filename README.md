@@ -116,6 +116,43 @@ present, Buildroot configures weston with `-Drenderer-gl=false`, which means mes
 under QEMU the rendering was going to be on the CPU either way. Enable
 `BR2_PACKAGE_MESA3D` with the llvmpipe gallium driver to get GL back.
 
+## Running it in VirtualBox
+
+The desktop build also produces `disk.img`: a whole disk with an MBR, GRUB and
+one ext4 partition, which boots on its own with nothing passed in from outside.
+
+```sh
+# copy it out of WSL with cp -- a PowerShell redirect corrupts binary streams
+wsl -d Ubuntu -- cp ~/work/br-desktop/images/disk.img /mnt/g/VirtualDisk/master-penguin-linux.img
+```
+
+VirtualBox cannot attach a raw image, so convert it first. The VDI is
+dynamically allocated, so it shrinks to what is actually used — 769 MB of raw
+image becomes about 85 MB:
+
+```powershell
+VBoxManage convertfromraw master-penguin-linux.img master-penguin-linux.vdi --format VDI
+```
+
+`make-vbox-vm.ps1` does the conversion and builds the VM around it:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\make-vbox-vm.ps1 -Start
+```
+
+The VM settings are not arbitrary — each one matches a driver compiled into this
+kernel: **SATA (AHCI)** for `CONFIG_SATA_AHCI`, **VMSVGA** for `CONFIG_DRM_VMWGFX`,
+a **USB tablet** for `CONFIG_USB_HID`, and an **Intel 82540EM** NIC for
+`CONFIG_E1000`. The QEMU board config assumes virtio for all of those, so
+`buildroot/board/linux-pc.config.fragment` adds the plain-PC hardware alongside
+it. One kernel, both machines.
+
+`root=` is a `PARTUUID`, fixed by pinning the MBR disk signature in
+`genimage.cfg`. That way the same image boots whether the disk appears as
+`/dev/sda` on VirtualBox's SATA controller or `/dev/vda` on QEMU's virtio one.
+The GRUB menu also carries explicit `/dev/sda1` and `/dev/vda1` entries as a
+fallback.
+
 ## Layout
 
 | path | what it is |
@@ -130,6 +167,7 @@ under QEMU the rendering was going to be on the CPU either way. Enable
 | `rootfs/` | root filesystem skeleton for the hand-built track |
 | `buildroot/` | BR2_EXTERNAL tree: the mpinit package, the defconfig, the overlay |
 | `build-desktop.sh` `boot-desktop.sh` | the desktop track |
+| `make-vbox-vm.ps1` | raw image to a ready-to-run VirtualBox VM |
 
 ## How the boot works
 
@@ -219,6 +257,7 @@ Desktop track:
 - [ ] mesa + llvmpipe, for GL clients
 - [ ] a real application or two, and a launcher for them
 - [ ] persistent home, and an installer that writes to a disk
+- [x] a self-booting disk image (GRUB + MBR) that runs in VirtualBox
 - [ ] boot it on actual hardware
 
 ## Notes
@@ -228,6 +267,10 @@ Things that cost time, written down so they only cost it once:
 - **`mount -o remount,rw /` needs `/proc` already mounted.** BusyBox `mount` reads
   `/proc/mounts` to work out what it is remounting. Put `mount -t proc proc /proc`
   first in `rcS`, or the root silently stays read-only.
+- **`BR2_TARGET_GRUB2_INSTALL_TOOLS=y` is not optional when using genimage.**
+  Without it grub2 leaves `boot.img` in its build directory and never installs it
+  into the target, which is where a post-build script has to pick it up to write
+  the MBR.
 - **`BR2_INIT_NONE` means *none*.** No init scripts, and no `/etc/fstab` either.
   `mount -a` then mounts nothing, `/sys` never appears, and weston fails with
   `no drm device found` — while `/dev/dri/card0` exists and works fine, because

@@ -19,7 +19,12 @@ BR2_LINUX_KERNEL_CUSTOM_VERSION=y
 BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="6.18.7"
 BR2_LINUX_KERNEL_USE_CUSTOM_CONFIG=y
 BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE="board/qemu/x86_64/linux.config"
+# ...plus the plain-PC hardware VirtualBox presents, which the QEMU config has
+# no reason to include. Both sets of drivers in one kernel, one image everywhere.
+BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES="$(BR2_EXTERNAL_MASTER_PENGUIN_PATH)/board/linux-pc.config.fragment"
 BR2_LINUX_KERNEL_NEEDS_HOST_LIBELF=y
+# GRUB loads the kernel off the disk, so it has to be inside the rootfs.
+BR2_LINUX_KERNEL_INSTALL_TARGET=y
 
 # Init: ours, not BusyBox's, not systemd's.
 BR2_INIT_NONE=y
@@ -54,3 +59,18 @@ BR2_PACKAGE_DEJAVU_SANS_MONO=y
 BR2_TARGET_ROOTFS_EXT2=y
 BR2_TARGET_ROOTFS_EXT2_4=y
 BR2_TARGET_ROOTFS_EXT2_SIZE="768M"
+
+# A bootable disk: MBR + GRUB + the rootfs partition, assembled by genimage.
+# This is what VirtualBox (or any hypervisor, or real hardware) can boot on its
+# own, with no -kernel argument doing the work from outside.
+BR2_TARGET_GRUB2=y
+BR2_TARGET_GRUB2_I386_PC=y
+BR2_TARGET_GRUB2_BUILTIN_MODULES_PC="boot linux ext2 fat squash4 part_msdos part_gpt normal biosdisk"
+# Without this, grub2 leaves boot.img in its build directory and never installs
+# it into the target — which is where post-build.sh has to pick it up for
+# genimage to write it into the MBR.
+BR2_TARGET_GRUB2_INSTALL_TOOLS=y
+BR2_PACKAGE_HOST_GENIMAGE=y
+BR2_ROOTFS_POST_BUILD_SCRIPT="$(BR2_EXTERNAL_MASTER_PENGUIN_PATH)/board/post-build.sh"
+BR2_ROOTFS_POST_IMAGE_SCRIPT="support/scripts/genimage.sh"
+BR2_ROOTFS_POST_SCRIPT_ARGS="-c $(BR2_EXTERNAL_MASTER_PENGUIN_PATH)/board/genimage.cfg"

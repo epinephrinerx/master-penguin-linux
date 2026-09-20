@@ -1,0 +1,44 @@
+# Hardware the QEMU board config does not cover, because it assumes virtio for
+# everything. VirtualBox presents an ordinary PC instead, so the same kernel has
+# to be able to find a SATA disk, a VGA-ish GPU, a PS/2 keyboard and an e1000
+# NIC. The virtio drivers stay enabled, so one kernel boots in both.
+
+# Storage — VirtualBox defaults to an AHCI SATA controller.
+CONFIG_ATA=y
+CONFIG_ATA_PIIX=y
+CONFIG_SATA_AHCI=y
+CONFIG_BLK_DEV_SD=y
+
+# Graphics — VMSVGA binds vmwgfx, VBoxVGA/VBoxSVGA bind vboxvideo. Enable both
+# so whichever controller is selected in the VM settings finds a driver, and
+# weston finds a /dev/dri node.
+CONFIG_DRM_VMWGFX=y
+CONFIG_DRM_VBOXVIDEO=y
+CONFIG_DRM_FBDEV_EMULATION=y
+CONFIG_FRAMEBUFFER_CONSOLE=y
+
+# Input — no virtio-input here: a PS/2 keyboard and mouse, plus a USB tablet.
+CONFIG_SERIO=y
+CONFIG_SERIO_I8042=y
+CONFIG_KEYBOARD_ATKBD=y
+CONFIG_INPUT_MOUSEDEV=y
+CONFIG_MOUSE_PS2=y
+CONFIG_USB=y
+CONFIG_USB_PCI=y
+CONFIG_USB_XHCI_HCD=y
+CONFIG_USB_XHCI_PCI=y
+CONFIG_USB_EHCI_HCD=y
+CONFIG_USB_EHCI_PCI=y
+CONFIG_USB_OHCI_HCD=y
+CONFIG_USB_OHCI_HCD_PCI=y
+CONFIG_HID=y
+CONFIG_HID_GENERIC=y
+CONFIG_USB_HID=y
+
+# Network — VirtualBox's default adapter is an Intel PRO/1000.
+CONFIG_E1000=y
+CONFIG_E1000E=y
+
+# A real console on the virtual monitor, not only the serial port.
+CONFIG_VT=y
+CONFIG_VT_CONSOLE=y

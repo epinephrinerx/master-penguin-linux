@@ -11,3 +11,8 @@ initramfs-stage/
 *.ext4
 *.log
 bzImage
+
+# Disk images copied out of WSL for VirtualBox. Hundreds of megabytes, and
+# reproducible from ./build-desktop.sh.
+disk.img
+*.vdi

@@ -1,0 +1,10 @@
+# Build output lives in $WORKDIR (default ~/work), never in the repo —
+# but ignore these anyway in case someone points WORKDIR at the checkout.
+linux-*/
+busybox-*/
+rootfs/
+*.tar.xz
+*.tar.bz2
+*.cpio.gz
+*.log
+bzImage

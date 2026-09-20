@@ -1,0 +1,25 @@
+#!/bin/sh
+# PID 1. The kernel unpacks the initramfs into rootfs and executes this.
+# If it ever exits, the kernel panics — that is the whole reason init systems loop.
+
+mount -t proc     none /proc
+mount -t sysfs    none /sys
+mount -t devtmpfs none /dev
+mount -t tmpfs    none /tmp
+
+echo
+echo "==========================================="
+echo "        master penguin linux"
+echo "==========================================="
+uname -a
+echo "cpus : $(nproc)"
+echo "mem  : $(awk '/MemTotal/{printf "%d MB", $2/1024}' /proc/meminfo)"
+echo "init : $$ ($0)"
+echo "exit : Ctrl-A then X"
+echo "==========================================="
+echo
+
+# cttyhack re-opens /dev/console as a controlling terminal so job control and
+# Ctrl-C work. Side effect: the shell reads the console, not our stdin, so
+# piping commands into QEMU no longer reaches it — boot with init=/bin/sh for that.
+exec setsid cttyhack /bin/sh

@@ -4,18 +4,22 @@ A Linux system built from source, one layer at a time — kernel, userland, init
 and eventually a bootable image. Not a fork of anything: the kernel and BusyBox
 come straight from upstream, everything around them is written here.
 
-**Status:** stage 1 — boots to a BusyBox shell in QEMU in about 1.5 seconds.
+**Status:** stage 2 — an initramfs hands over to a real ext4 root with `switch_root`,
+and BusyBox init takes over from there. Cold boot to prompt is about 1.5 seconds.
 
 ```
+[initramfs] root device: /dev/vda
+[initramfs] handing over to /sbin/init
+
 ===========================================
         master penguin linux
 ===========================================
-Linux (none) 6.18.52 #1 SMP PREEMPT_DYNAMIC x86_64 GNU/Linux
-cpus : 16
-mem  : 966 MB
-init : 1 (/init)
+Linux 6.18.52
+root : /dev/vda (rw,relatime)
+init : /bin/busybox (pid 1)
+boots: 3 (persisted on disk)
 ===========================================
-~ #
+root@master-penguin:~#
 ```
 
 ## Requirements
@@ -35,15 +39,16 @@ still works, just slower.
 
 ```sh
 ./build.sh          # fetch + compile kernel and busybox  (~10 min, ~2.8 GB)
-./mkinitramfs.sh    # pack initramfs/init + busybox into a cpio archive
+./mkrootfs.sh       # build the ext4 root image from rootfs/ + busybox
+./mkinitramfs.sh    # pack the bootstrap initramfs
 ./boot.sh           # boot it under QEMU     (quit: Ctrl-A then X)
 ```
 
 Re-running `build.sh` is cheap — it skips anything already downloaded or configured.
-The edit loop for userland work is just the last two:
+Day to day only the last three matter, and each takes about a second:
 
 ```sh
-vim initramfs/init && ./mkinitramfs.sh && ./boot.sh
+vi rootfs/etc/init.d/rcS && ./mkrootfs.sh && ./boot.sh
 ```
 
 Builds land in `$WORKDIR` (default `~/work`), never inside the repo. On WSL, keep
@@ -56,29 +61,44 @@ the 9p filesystem and turns a 10-minute kernel build into an hour.
 |---|---|
 | `config.sh` | versions and paths — the only place to bump the kernel |
 | `build.sh` | downloads and compiles kernel + BusyBox |
-| `mkinitramfs.sh` | assembles the root filesystem into `initramfs.cpio.gz` |
+| `mkrootfs.sh` | builds `rootfs.ext4` from `rootfs/` + BusyBox |
+| `mkinitramfs.sh` | packs `initramfs/init` + BusyBox into a cpio archive |
 | `boot.sh` | runs QEMU, with KVM when available |
-| `initramfs/init` | **PID 1** — the actual source code of this system |
+| `initramfs/init` | PID 1 **in the initramfs** — finds the root disk, then `switch_root` |
+| `rootfs/` | the real root filesystem skeleton: inittab, fstab, rcS, os-release |
 
 ## How the boot works
 
 ```
-QEMU/SeaBIOS  ->  bzImage  ->  unpack initramfs into rootfs  ->  exec /init  ->  sh
+QEMU/SeaBIOS
+  -> bzImage
+     -> unpack initramfs into RAM
+        -> exec /init                     (initramfs/init)
+           -> mount /dev/vda ro
+           -> mount --move /dev
+           -> switch_root                 (initramfs is deleted here)
+              -> /sbin/init               (busybox)
+                 -> /etc/inittab
+                    -> sysinit: /etc/init.d/rcS
+                    -> respawn: -/bin/sh
 ```
 
-There is no bootloader and no disk yet. The kernel is handed to QEMU directly with
-`-kernel`, and the entire userland is a 1.3 MB gzipped cpio archive the kernel
-unpacks into RAM before running `/init`.
+The initramfs is now a bootstrap and nothing else. It exists because at the moment
+the kernel finishes booting, nothing knows how to reach the root filesystem yet —
+on a real machine that means loading disk and RAID drivers, decrypting LUKS, or
+finding an LVM volume. Here it only has to mount `/dev/vda`, but the shape is the same.
 
-`/init` is PID 1, and PID 1 may never exit — if it does, the kernel panics
-immediately. Replacing the last line of `initramfs/init` with `exec /bin/echo hi`
-is the fastest way to see that for yourself, and it is the entire reason real init
-systems are infinite loops.
+`switch_root` then *deletes* the initramfs to reclaim the RAM and execs the real
+`/sbin/init` as PID 1. That is why `/dev` has to be moved across first: the new root
+has an empty `/dev`, and init cannot even open `/dev/console` to report a failure.
+
+Unlike stage 1, this root survives reboots — `boots:` in the banner counts them,
+and the record is in `/var/log/boot.log` on the disk image.
 
 ## Roadmap
 
 - [x] **1** — kernel + BusyBox initramfs, boots to a shell
-- [ ] **2** — real root filesystem on a disk image, `switch_root` out of initramfs
+- [x] **2** — real ext4 root on a disk image, `switch_root` out of the initramfs
 - [ ] **3** — hand-written init (PID 1 in C): reap orphans, supervise services
 - [ ] **4** — two-pass cross toolchain, so the system can rebuild itself
 - [ ] **5** — package manager and build recipes
@@ -88,11 +108,20 @@ systems are infinite loops.
 
 Things that cost time, written down so they only cost it once:
 
+- **`mount -o remount,rw /` needs `/proc` already mounted.** BusyBox `mount` reads
+  `/proc/mounts` to work out what it is remounting. Put `mount -t proc proc /proc`
+  first in `rcS`, or the root silently stays read-only.
+- **Killing QEMU is a power cut.** Writes sit in the guest page cache and vanish;
+  `poweroff` inside the guest runs the `::shutdown` line in `inittab` and unmounts
+  cleanly. Anything that must survive a hard kill needs an explicit `sync`.
+- **`mke2fs -d` builds the image from a directory** — no loop mount, no root. It
+  cannot create device nodes, which is fine here because `/dev` is moved in from
+  the initramfs.
 - **BusyBox `oldconfig` kills the build.** `yes "" | make oldconfig` — `yes` takes
   SIGPIPE when `oldconfig` stops reading, `set -o pipefail` turns that into a
   pipeline failure, and `set -e` aborts. Relax `pipefail` around that one line.
-- **`cttyhack` breaks piped input.** It gives the shell a controlling terminal so
-  Ctrl-C works, but the shell then reads `/dev/console` instead of QEMU's stdin.
-  For scripted runs, boot with `-append "console=ttyS0 init=/bin/sh"`.
 - **Kernel `make bzImage`, not `make`.** `defconfig` marks hundreds of drivers `=m`
-  and none of them are needed for this.
+  and none of them are needed for this. `VIRTIO_BLK` and `EXT4_FS` are already
+  built in, so no custom config is needed yet.
+- **`cttyhack` breaks piped input.** Only the initramfs rescue shell uses it now;
+  under BusyBox init, `-/bin/sh` in `inittab` gets a proper controlling terminal.

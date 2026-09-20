@@ -1,5 +1,6 @@
 #!/bin/bash
-# Assemble initramfs/ + busybox into a gzipped cpio archive the kernel can unpack.
+# Assemble the initramfs: busybox + initramfs/init, packed as gzipped cpio.
+# This is only the bootstrap now — the real userland lives in the ext4 image.
 set -euo pipefail
 cd "$(dirname "$(readlink -f "$0")")"
 SRC="$PWD"
@@ -7,10 +8,10 @@ source ./config.sh
 
 [ -d "$BUSYBOX_DIR/_install" ] || { echo "busybox not built yet — run ./build.sh first" >&2; exit 1; }
 
-ROOT="$WORKDIR/rootfs"
+ROOT="$WORKDIR/initramfs-stage"
 rm -rf "$ROOT"; mkdir -p "$ROOT"
 cp -a "$BUSYBOX_DIR/_install/." "$ROOT/"
-mkdir -p "$ROOT"/{proc,sys,dev,tmp,root,etc}
+mkdir -p "$ROOT"/{proc,sys,dev,mnt/root}
 
 install -m 0755 "$SRC/initramfs/init" "$ROOT/init"
 

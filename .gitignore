@@ -1,10 +1,13 @@
-# Build output lives in $WORKDIR (default ~/work), never in the repo —
-# but ignore these anyway in case someone points WORKDIR at the checkout.
+# Build output lives in $WORKDIR (default ~/work), never in the repo — but ignore
+# it anyway in case someone points WORKDIR at the checkout.
+# NOTE: rootfs/ is a tracked source directory. The staging dirs are *-stage/.
 linux-*/
 busybox-*/
-rootfs/
+rootfs-stage/
+initramfs-stage/
 *.tar.xz
 *.tar.bz2
 *.cpio.gz
+*.ext4
 *.log
 bzImage

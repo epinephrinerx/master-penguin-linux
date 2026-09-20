@@ -1,0 +1,33 @@
+#!/bin/sh
+# Runs once, from the ::sysinit line of /etc/inittab.
+
+# /proc has to come first — see the note in /etc/fstab.
+mount -t proc proc /proc
+mount -o remount,rw /
+mount -a
+
+mkdir -p /dev/pts /dev/shm
+mount -t devpts devpts /dev/pts
+mount -t tmpfs  tmpfs  /dev/shm
+
+hostname -F /etc/hostname
+
+# Proof that this root really persists: the initramfs was thrown away at
+# switch_root, but this file survives every reboot because it lives on /dev/vda.
+echo "boot $(date '+%Y-%m-%d %H:%M:%S')" >> /var/log/boot.log
+# Without sync this line lives only in the page cache. Killing QEMU is a power
+# cut, not a shutdown, and the guest never gets to flush it. A clean `poweroff`
+# would (see the ::shutdown line in /etc/inittab) — this just makes it immediate.
+sync
+
+echo
+echo "==========================================="
+echo "        master penguin linux"
+echo "==========================================="
+uname -sr
+echo "root : $(mount | awk '$3=="/"{print $1, $6}')"
+echo "init : $(readlink -f /proc/1/exe) (pid 1)"
+echo "boots: $(wc -l < /var/log/boot.log) (persisted on disk)"
+echo "exit : Ctrl-A then X"
+echo "==========================================="
+echo

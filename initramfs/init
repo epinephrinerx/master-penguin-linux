@@ -1,25 +1,42 @@
 #!/bin/sh
-# PID 1. The kernel unpacks the initramfs into rootfs and executes this.
-# If it ever exits, the kernel panics — that is the whole reason init systems loop.
+# PID 1 inside the initramfs — a bootstrap, nothing more.
+#
+# Its entire job is to make the real root filesystem reachable and then get out
+# of the way. Everything it sets up here is thrown away by switch_root, which
+# wipes the initramfs to reclaim the RAM it occupies.
 
 mount -t proc     none /proc
 mount -t sysfs    none /sys
 mount -t devtmpfs none /dev
-mount -t tmpfs    none /tmp
 
-echo
-echo "==========================================="
-echo "        master penguin linux"
-echo "==========================================="
-uname -a
-echo "cpus : $(nproc)"
-echo "mem  : $(awk '/MemTotal/{printf "%d MB", $2/1024}' /proc/meminfo)"
-echo "init : $$ ($0)"
-echo "exit : Ctrl-A then X"
-echo "==========================================="
-echo
+rescue() {
+    echo
+    echo "!! $1"
+    echo "!! staying in the initramfs — the real root was never mounted"
+    echo
+    exec setsid cttyhack /bin/sh
+}
 
-# cttyhack re-opens /dev/console as a controlling terminal so job control and
-# Ctrl-C work. Side effect: the shell reads the console, not our stdin, so
-# piping commands into QEMU no longer reaches it — boot with init=/bin/sh for that.
-exec setsid cttyhack /bin/sh
+# The kernel hands us its command line; honour root= the way a real initramfs does.
+ROOT_DEV=/dev/vda
+for arg in $(cat /proc/cmdline); do
+    case "$arg" in
+        root=*) ROOT_DEV="${arg#root=}" ;;
+    esac
+done
+
+echo "[initramfs] root device: $ROOT_DEV"
+mkdir -p /mnt/root
+
+# Read-only first. /etc/init.d/rcS remounts it rw once it has had a look —
+# the same order a real distro uses so fsck can run before anything writes.
+mount -t ext4 -o ro "$ROOT_DEV" /mnt/root || rescue "cannot mount $ROOT_DEV"
+[ -x /mnt/root/sbin/init ] || rescue "$ROOT_DEV has no /sbin/init"
+
+# Carry devtmpfs across the switch. Without this the new root has an empty /dev,
+# and init cannot even open /dev/console to print why it failed.
+mount --move /dev /mnt/root/dev
+umount /proc /sys
+
+echo "[initramfs] handing over to /sbin/init"
+exec switch_root /mnt/root /sbin/init

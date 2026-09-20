@@ -12,3 +12,8 @@ KERNEL_DIR="$WORKDIR/linux-$KERNEL_VERSION"
 BUSYBOX_DIR="$WORKDIR/busybox-$BUSYBOX_VERSION"
 BZIMAGE="$KERNEL_DIR/arch/x86/boot/bzImage"
 INITRAMFS="$WORKDIR/initramfs.cpio.gz"
+
+# The real root filesystem: an ext4 image QEMU attaches as a virtio disk.
+ROOTFS_IMG="$WORKDIR/rootfs.ext4"
+ROOTFS_SIZE=256M
+ROOT_DEV=/dev/vda

@@ -1,0 +1,6 @@
+NAME="master penguin linux"
+ID=master-penguin
+VERSION="0.2"
+VERSION_ID=0.2
+PRETTY_NAME="master penguin linux 0.2 (stage 2)"
+HOME_URL="https://github.com/epinephrinerx/master-penguin-linux"

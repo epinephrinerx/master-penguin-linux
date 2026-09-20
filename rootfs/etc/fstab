@@ -1,0 +1,7 @@
+# /proc is mounted by /etc/init.d/rcS before this file is ever read: busybox
+# `mount -o remount,rw /` looks up /proc/mounts to find what it is remounting,
+# so mounting proc from here would be too late and / would stay read-only.
+# /dev is absent on purpose too — the initramfs moves devtmpfs across.
+sysfs   /sys    sysfs   defaults            0 0
+tmpfs   /tmp    tmpfs   defaults,mode=1777  0 0
+tmpfs   /run    tmpfs   defaults,mode=0755  0 0

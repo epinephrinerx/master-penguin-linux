@@ -111,6 +111,10 @@ Things that cost time, written down so they only cost it once:
 - **`mount -o remount,rw /` needs `/proc` already mounted.** BusyBox `mount` reads
   `/proc/mounts` to work out what it is remounting. Put `mount -t proc proc /proc`
   first in `rcS`, or the root silently stays read-only.
+- **`mkrootfs.sh` destroys the disk.** It rebuilds `rootfs.ext4` from scratch every
+  run, so anything written inside the guest is gone. `rootfs/` in git is the source
+  of truth; the image is a build artifact. Skip `mkrootfs.sh` and just `./boot.sh`
+  when you want to keep what is in there.
 - **Killing QEMU is a power cut.** Writes sit in the guest page cache and vanish;
   `poweroff` inside the guest runs the `::shutdown` line in `inittab` and unmounts
   cleanly. Anything that must survive a hard kill needs an explicit `sync`.

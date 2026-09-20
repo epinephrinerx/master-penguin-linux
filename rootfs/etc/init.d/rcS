@@ -1,5 +1,5 @@
 #!/bin/sh
-# Runs once, from the ::sysinit line of /etc/inittab.
+# Runs once, from the sysinit line of /etc/mpinit.conf.
 
 # /proc has to come first — see the note in /etc/fstab.
 mount -t proc proc /proc
@@ -17,17 +17,29 @@ hostname -F /etc/hostname
 echo "boot $(date '+%Y-%m-%d %H:%M:%S')" >> /var/log/boot.log
 # Without sync this line lives only in the page cache. Killing QEMU is a power
 # cut, not a shutdown, and the guest never gets to flush it. A clean `poweroff`
-# would (see the ::shutdown line in /etc/inittab) — this just makes it immediate.
+# would — this just makes it immediate.
 sync
 
-echo
-echo "==========================================="
-echo "        master penguin linux"
-echo "==========================================="
-uname -sr
-echo "root : $(mount | awk '$3=="/"{print $1, $6}')"
-echo "init : $(readlink -f /proc/1/exe) (pid 1)"
-echo "boots: $(wc -l < /var/log/boot.log) (persisted on disk)"
-echo "exit : Ctrl-A then X"
-echo "==========================================="
-echo
+# Opt-in self-test, triggered from the kernel command line.
+#
+# setsid matters here. init gives rcS its own session with /dev/console as the
+# controlling terminal, and this shell has no job control, so a plain `... &`
+# would land in the same process group. When rcS exits the kernel SIGHUPs that
+# group and the test dies before it ever runs. A new session escapes that.
+grep -q selftest /proc/cmdline && setsid /root/selftest.sh &
+
+# One heredoc rather than a dozen echoes: init and the shell it respawns write
+# to this same console, and separate writes interleave with each other.
+cat <<BANNER
+
+===========================================
+        master penguin linux
+===========================================
+$(uname -sr)
+root : $(mount | awk '$3=="/"{print $1, $6}')
+init : $(readlink -f /proc/1/exe) (pid 1)
+boots: $(wc -l < /var/log/boot.log) (persisted on disk)
+exit : Ctrl-A then X
+===========================================
+
+BANNER

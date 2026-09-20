@@ -4,8 +4,9 @@ A Linux system built from source, one layer at a time — kernel, userland, init
 and eventually a bootable image. Not a fork of anything: the kernel and BusyBox
 come straight from upstream, everything around them is written here.
 
-**Status:** stage 2 — an initramfs hands over to a real ext4 root with `switch_root`,
-and BusyBox init takes over from there. Cold boot to prompt is about 1.5 seconds.
+**Status:** stage 3 — PID 1 is now `mpinit`, written for this system in about 300
+lines of C. It reaps orphans, supervises services and shuts the machine down
+cleanly. Cold boot to prompt is about 1.5 seconds.
 
 ```
 [initramfs] root device: /dev/vda
@@ -16,7 +17,7 @@ and BusyBox init takes over from there. Cold boot to prompt is about 1.5 seconds
 ===========================================
 Linux 6.18.52
 root : /dev/vda (rw,relatime)
-init : /bin/busybox (pid 1)
+init : /sbin/mpinit (pid 1)
 boots: 3 (persisted on disk)
 ===========================================
 root@master-penguin:~#
@@ -39,7 +40,7 @@ still works, just slower.
 
 ```sh
 ./build.sh          # fetch + compile kernel and busybox  (~10 min, ~2.8 GB)
-./mkrootfs.sh       # build the ext4 root image from rootfs/ + busybox
+./mkrootfs.sh       # compile mpinit, build the ext4 root image
 ./mkinitramfs.sh    # pack the bootstrap initramfs
 ./boot.sh           # boot it under QEMU     (quit: Ctrl-A then X)
 ```
@@ -64,8 +65,9 @@ the 9p filesystem and turns a 10-minute kernel build into an hour.
 | `mkrootfs.sh` | builds `rootfs.ext4` from `rootfs/` + BusyBox |
 | `mkinitramfs.sh` | packs `initramfs/init` + BusyBox into a cpio archive |
 | `boot.sh` | runs QEMU, with KVM when available |
-| `initramfs/init` | PID 1 **in the initramfs** — finds the root disk, then `switch_root` |
-| `rootfs/` | the real root filesystem skeleton: inittab, fstab, rcS, os-release |
+| `src/mpinit.c` | **PID 1** — the init this system actually runs |
+| `initramfs/init` | PID 1 *in the initramfs* — finds the root disk, then `switch_root` |
+| `rootfs/` | the real root filesystem skeleton: mpinit.conf, fstab, rcS, os-release |
 
 ## How the boot works
 
@@ -95,11 +97,47 @@ has an empty `/dev`, and init cannot even open `/dev/console` to report a failur
 Unlike stage 1, this root survives reboots — `boots:` in the banner counts them,
 and the record is in `/var/log/boot.log` on the disk image.
 
+## init
+
+`src/mpinit.c` replaces BusyBox init. It is deliberately small, and it exists to
+make the three obligations of PID 1 concrete:
+
+**It may never exit.** If PID 1 returns, the kernel panics immediately. Every
+path through the file either loops or calls `reboot()`.
+
+**It reaps whatever it is given.** When a process dies its children are
+reparented to PID 1. A single blocking `waitpid(-1, ...)` collects them all —
+services it started, and orphans it has never heard of. Skip that and zombies
+accumulate until nothing can fork.
+
+**It supervises.** Services come from `/etc/mpinit.conf`:
+
+```
+sysinit /etc/init.d/rcS     run once, to completion, before anything else
+respawn /bin/sh             keep running; restart whenever it exits
+```
+
+Respawns are throttled — more than five restarts in ten seconds and it backs
+off, so a service that dies on startup cannot spin the CPU forever.
+
+Shutdown follows the BusyBox signal convention, so `poweroff`, `halt` and
+`reboot` keep working: SIGUSR1 halts, SIGUSR2 powers off, SIGTERM reboots, and
+Ctrl-Alt-Del arrives as SIGINT because init asks for it with `RB_DISABLE_CAD`.
+Each one stops every process, syncs, remounts `/` read-only and calls `reboot()`.
+
+There is a self-test for all of this. Boot with `KERNEL_EXTRA=selftest ./boot.sh`
+and `/root/selftest.sh` checks that PID 1 is mpinit, that an orphan is reparented
+to it, that no zombies survive, and that killing the supervised shell brings a new
+one back — then powers off, which exercises the shutdown path too.
+
+BusyBox init is still in the image as a fallback: `KERNEL_EXTRA=init=/bin/init ./boot.sh`
+boots it from `/etc/inittab` instead.
+
 ## Roadmap
 
 - [x] **1** — kernel + BusyBox initramfs, boots to a shell
 - [x] **2** — real ext4 root on a disk image, `switch_root` out of the initramfs
-- [ ] **3** — hand-written init (PID 1 in C): reap orphans, supervise services
+- [x] **3** — hand-written init (PID 1 in C): reap orphans, supervise services
 - [ ] **4** — two-pass cross toolchain, so the system can rebuild itself
 - [ ] **5** — package manager and build recipes
 - [ ] **6** — bootloader + bootable ISO
@@ -111,6 +149,20 @@ Things that cost time, written down so they only cost it once:
 - **`mount -o remount,rw /` needs `/proc` already mounted.** BusyBox `mount` reads
   `/proc/mounts` to work out what it is remounting. Put `mount -t proc proc /proc`
   first in `rcS`, or the root silently stays read-only.
+- **Do not give a sysinit script a controlling terminal.** When a session leader
+  that owns one exits, the kernel runs `disassociate_ctty()`, and on the console
+  that vhangup throws away output still queued. A boot script losing its last
+  few printed lines is a miserable thing to debug. `mpinit` hands a ctty to
+  respawn services only.
+- **A backgrounded job in a script dies with the script.** No job control means
+  `cmd &` stays in the same process group, which gets SIGHUP when the session
+  leader exits. `setsid cmd &` escapes it.
+- **`/proc/self` is whoever does the reading.** `$(cat /proc/self/stat)` reports
+  `cat`, not the shell that called it. To check who adopted an orphan, record its
+  pid and read `/proc/<pid>/stat` from outside.
+- **BusyBox picks its applet from `basename(argv[0])`.** Exec'ing `/bin/busybox`
+  as init just prints its help and exits — instant panic. The fallback symlink
+  has to be named `init`.
 - **`mkrootfs.sh` destroys the disk.** It rebuilds `rootfs.ext4` from scratch every
   run, so anything written inside the guest is gone. `rootfs/` in git is the source
   of truth; the image is a build artifact. Skip `mkrootfs.sh` and just `./boot.sh`

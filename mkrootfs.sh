@@ -23,8 +23,15 @@ chmod 1777 "$STAGE/tmp"
 chmod 0700 "$STAGE/root"
 chmod 0755 "$STAGE/etc/init.d/rcS"
 
-# busybox is the init too; /sbin/init is what switch_root execs.
-ln -sf ../bin/busybox "$STAGE/sbin/init"
+# Our own PID 1. Static, because this root has no shared libc to load — and
+# a dynamically linked init would die before it could say why.
+cc -static -Os -Wall -Wextra -o "$STAGE/sbin/mpinit" "$SRC/src/mpinit.c"
+ln -sf mpinit "$STAGE/sbin/init"
+# BusyBox init stays available as a fallback, reachable with KERNEL_EXTRA=init=/bin/init.
+# The symlink has to be *named* init: BusyBox picks its applet from
+# basename(argv[0]), so exec'ing /bin/busybox directly just prints its help
+# and exits -- which as PID 1 means an instant kernel panic.
+ln -sf busybox "$STAGE/bin/init"
 
 rm -f "$ROOTFS_IMG"
 mke2fs -q -t ext4 -L masterpenguin -d "$STAGE" "$ROOTFS_IMG" "$ROOTFS_SIZE"

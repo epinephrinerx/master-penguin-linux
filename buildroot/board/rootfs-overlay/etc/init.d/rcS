@@ -1,0 +1,53 @@
+#!/bin/sh
+# Runs once, from the sysinit line of /etc/mpinit.conf.
+#
+# This is the desktop target. Unlike the hand-built track there is no initramfs:
+# the kernel mounts /dev/vda directly and devtmpfs comes up on its own.
+#
+# BR2_INIT_NONE means Buildroot installs no init scripts whatsoever, so
+# everything a running system expects has to happen here.
+
+# /proc first — BusyBox mount reads /proc/mounts to work out a remount.
+mount -t proc  proc  /proc
+# /sys before anything touches udev. libudev enumerates by walking /sys, not by
+# reading udevd's database, so with /sys missing weston reports "no drm device
+# found" while /dev/dri/card0 exists and works perfectly well.
+mount -t sysfs sysfs /sys
+
+mount -o remount,rw /
+mkdir -p /dev/pts /dev/shm /run /tmp /var/log
+mount -a
+
+hostname -F /etc/hostname 2>/dev/null
+
+# udev has to be running before weston starts: libinput enumerates keyboards and
+# pointers through it, and it is what applies permissions to the DRM nodes.
+/sbin/udevd --daemon
+/sbin/udevadm trigger --type=subsystems --action=add
+/sbin/udevadm trigger --type=devices --action=add
+/sbin/udevadm settle --timeout=10
+
+echo "boot $(date '+%Y-%m-%d %H:%M:%S')" >> /var/log/boot.log
+sync
+
+# Opt-in: open a terminal on the desktop once weston is up. setsid for the same
+# reason as everywhere else — a plain `&` here would take the SIGHUP the kernel
+# sends when this script, the session leader, exits.
+grep -q autoterm /proc/cmdline && setsid /usr/bin/start-terminal &
+
+cat <<BANNER
+
+===========================================
+        master penguin linux
+===========================================
+$(uname -sr)
+root : $(mount | awk '$3=="/"{print $1, $6}')
+init : $(readlink -f /proc/1/exe) (pid 1)
+boots: $(wc -l < /var/log/boot.log) (persisted on disk)
+sys  : $(mount | grep -c sysfs) sysfs mounted
+gpu  : $(ls /dev/dri 2>/dev/null | tr '\n' ' ')
+===========================================
+  weston is starting on the virtual display
+===========================================
+
+BANNER

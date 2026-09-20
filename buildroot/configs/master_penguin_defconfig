@@ -1,0 +1,56 @@
+# master penguin linux — Wayland desktop on QEMU/x86_64.
+#
+# Derived from Buildroot's qemu_x86_64_defconfig, with the init system replaced
+# by our own and a Weston desktop added.
+
+BR2_x86_64=y
+
+# glibc: weston and its dependency chain want a full libc, and C++ for
+# libdisplay-info and friends.
+BR2_TOOLCHAIN_BUILDROOT_GLIBC=y
+BR2_TOOLCHAIN_BUILDROOT_CXX=y
+BR2_INSTALL_LIBSTDCPP=y
+
+# Kernel — reuse the QEMU board config, which already has DRM, virtio-gpu,
+# virtio-input and evdev built in. Nothing to add for a display.
+BR2_PACKAGE_HOST_LINUX_HEADERS_CUSTOM_6_18=y
+BR2_LINUX_KERNEL=y
+BR2_LINUX_KERNEL_CUSTOM_VERSION=y
+BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="6.18.7"
+BR2_LINUX_KERNEL_USE_CUSTOM_CONFIG=y
+BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE="board/qemu/x86_64/linux.config"
+BR2_LINUX_KERNEL_NEEDS_HOST_LIBELF=y
+
+# Init: ours, not BusyBox's, not systemd's.
+BR2_INIT_NONE=y
+BR2_PACKAGE_MPINIT=y
+BR2_ROOTFS_OVERLAY="$(BR2_EXTERNAL_MASTER_PENGUIN_PATH)/board/rootfs-overlay"
+
+# udev — libinput and weston discover input and DRM devices through it.
+# BR2_PACKAGE_EUDEV cannot be set directly: it hangs off the /dev management
+# choice, and weston in turn depends on BR2_PACKAGE_HAS_UDEV which only eudev
+# provides here. Set the wrong one of these and weston silently vanishes from
+# the build with no error at all.
+BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_EUDEV=y
+
+# The desktop. No mesa: without libegl/libgbm/libgles weston builds with
+# -Drenderer-gl=false and uses the pixman software renderer instead, which
+# skips having to build LLVM. Add mesa3d + llvmpipe later for GL.
+BR2_PACKAGE_WESTON=y
+BR2_PACKAGE_WESTON_DRM=y
+BR2_PACKAGE_WESTON_DEFAULT_DRM=y
+BR2_PACKAGE_WESTON_SHELL_DESKTOP=y
+BR2_PACKAGE_WESTON_DEMO_CLIENTS=y
+BR2_PACKAGE_SEATD=y
+BR2_PACKAGE_SEATD_BUILTIN=y
+
+# Fonts, or weston-terminal has nothing to draw with.
+BR2_PACKAGE_FONTCONFIG=y
+BR2_PACKAGE_DEJAVU=y
+BR2_PACKAGE_DEJAVU_SANS=y
+BR2_PACKAGE_DEJAVU_SANS_MONO=y
+
+# 60M is the default and nowhere near enough once weston is in.
+BR2_TARGET_ROOTFS_EXT2=y
+BR2_TARGET_ROOTFS_EXT2_4=y
+BR2_TARGET_ROOTFS_EXT2_SIZE="768M"

@@ -1,3 +1,6 @@
 # These scripts are executed by bash inside WSL/Linux. CRLF would break the
 # shebang line ("bad interpreter"), so pin the whole repo to LF on every platform.
 * text=auto eol=lf
+
+# ...except the things that are not text at all.
+*.png binary

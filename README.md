@@ -4,9 +4,15 @@ A Linux system built from source, one layer at a time — kernel, userland, init
 and eventually a bootable image. Not a fork of anything: the kernel and BusyBox
 come straight from upstream, everything around them is written here.
 
-**Status:** stage 3 — PID 1 is now `mpinit`, written for this system in about 300
-lines of C. It reaps orphans, supervises services and shuts the machine down
-cleanly. Cold boot to prompt is about 1.5 seconds.
+**Status:** there are two tracks, and both work.
+
+*Hand-built* — kernel, BusyBox initramfs, an ext4 root and `mpinit`, our own PID 1
+in about 300 lines of C. Every layer assembled by hand. Boots to a shell in ~1.5s.
+
+*Desktop* — the same `mpinit` as PID 1, with Buildroot supplying the cross
+toolchain and a Wayland stack around it. Boots to a Weston desktop.
+
+![the desktop target](docs/desktop.png)
 
 ```
 [initramfs] root device: /dev/vda
@@ -22,6 +28,28 @@ boots: 3 (persisted on disk)
 ===========================================
 root@master-penguin:~#
 ```
+
+## The two tracks
+
+|  | hand-built | desktop |
+|---|---|---|
+| build | `./build.sh` | `./build-desktop.sh` |
+| boot | `./boot.sh` | `./boot-desktop.sh` |
+| toolchain | the host compiler | Buildroot cross toolchain (gcc + glibc) |
+| userland | BusyBox, static | BusyBox + Wayland, shared glibc |
+| boot chain | initramfs, then `switch_root` | kernel mounts the root directly |
+| PID 1 | `src/mpinit.c` | `src/mpinit.c` — the same file |
+| build time | ~10 min | ~70 min the first time |
+
+The hand-built track is where the learning is: nothing is hidden, and every layer
+is small enough to read in one sitting. It stops short of a desktop on purpose —
+a graphical stack means a cross toolchain, a full libc, mesa, and forty-odd
+libraries underneath the compositor, which is weeks of work by hand and teaches
+progressively less per hour.
+
+So the desktop track hands that part to Buildroot and keeps what is ours: `mpinit`
+is built as a Buildroot package from the very same source, and everything under
+`buildroot/board/rootfs-overlay/` is this system, not Buildroot's.
 
 ## Requirements
 
@@ -56,6 +84,38 @@ Builds land in `$WORKDIR` (default `~/work`), never inside the repo. On WSL, kee
 that on the distro's own ext4 — building under `/mnt/c` or `/mnt/d` goes through
 the 9p filesystem and turns a 10-minute kernel build into an hour.
 
+## Desktop quick start
+
+```sh
+./build-desktop.sh     # buildroot: toolchain, kernel, wayland, weston  (~70 min)
+./boot-desktop.sh      # opens a window (WSLg or any X/Wayland display)
+```
+
+Useful variants:
+
+```sh
+KERNEL_EXTRA=autoterm ./boot-desktop.sh     # open a terminal on the desktop at boot
+./boot-desktop.sh --headless                # no window; screenshot over the QEMU monitor
+```
+
+Headless mode puts the QEMU monitor on a unix socket, so a screenshot is:
+
+```sh
+echo "screendump /tmp/shot.ppm" | socat - UNIX-CONNECT:/tmp/mp-monitor.sock
+```
+
+After editing the init or anything in the overlay, only the image needs rebuilding:
+
+```sh
+cd "$WORKDIR/br-desktop" && make mpinit-rebuild all
+```
+
+Weston runs on the **pixman** software renderer. Without `libegl`/`libgbm`/`libgles`
+present, Buildroot configures weston with `-Drenderer-gl=false`, which means mesa
+— and therefore LLVM — never has to be built. That is most of an hour saved, and
+under QEMU the rendering was going to be on the CPU either way. Enable
+`BR2_PACKAGE_MESA3D` with the llvmpipe gallium driver to get GL back.
+
 ## Layout
 
 | path | what it is |
@@ -67,7 +127,9 @@ the 9p filesystem and turns a 10-minute kernel build into an hour.
 | `boot.sh` | runs QEMU, with KVM when available |
 | `src/mpinit.c` | **PID 1** — the init this system actually runs |
 | `initramfs/init` | PID 1 *in the initramfs* — finds the root disk, then `switch_root` |
-| `rootfs/` | the real root filesystem skeleton: mpinit.conf, fstab, rcS, os-release |
+| `rootfs/` | root filesystem skeleton for the hand-built track |
+| `buildroot/` | BR2_EXTERNAL tree: the mpinit package, the defconfig, the overlay |
+| `build-desktop.sh` `boot-desktop.sh` | the desktop track |
 
 ## How the boot works
 
@@ -113,9 +175,15 @@ accumulate until nothing can fork.
 **It supervises.** Services come from `/etc/mpinit.conf`:
 
 ```
-sysinit /etc/init.d/rcS     run once, to completion, before anything else
-respawn /bin/sh             keep running; restart whenever it exits
+sysinit /etc/init.d/rcS       run once, to completion, before anything else
+respawn /bin/sh               keep running, with a controlling terminal
+daemon  /usr/bin/start-weston keep running, without one
 ```
+
+`respawn` and `daemon` differ in exactly one thing: whether the service is given
+a controlling terminal. Only one session can own the console at a time, so
+handing it to everything means services stealing it from each other. A shell
+needs it for job control; a compositor talking to DRM does not.
 
 Respawns are throttled — more than five restarts in ten seconds and it backs
 off, so a service that dies on startup cannot spin the CPU forever.
@@ -138,9 +206,20 @@ boots it from `/etc/inittab` instead.
 - [x] **1** — kernel + BusyBox initramfs, boots to a shell
 - [x] **2** — real ext4 root on a disk image, `switch_root` out of the initramfs
 - [x] **3** — hand-written init (PID 1 in C): reap orphans, supervise services
-- [ ] **4** — two-pass cross toolchain, so the system can rebuild itself
-- [ ] **5** — package manager and build recipes
-- [ ] **6** — bootloader + bootable ISO
+- [x] **desktop** — Weston on Wayland, with Buildroot supplying the toolchain
+
+Hand-built track, if it is ever worth going back to:
+
+- [ ] two-pass cross toolchain, so the system can rebuild itself
+- [ ] package manager and build recipes
+- [ ] bootloader + bootable ISO
+
+Desktop track:
+
+- [ ] mesa + llvmpipe, for GL clients
+- [ ] a real application or two, and a launcher for them
+- [ ] persistent home, and an installer that writes to a disk
+- [ ] boot it on actual hardware
 
 ## Notes
 
@@ -149,6 +228,23 @@ Things that cost time, written down so they only cost it once:
 - **`mount -o remount,rw /` needs `/proc` already mounted.** BusyBox `mount` reads
   `/proc/mounts` to work out what it is remounting. Put `mount -t proc proc /proc`
   first in `rcS`, or the root silently stays read-only.
+- **`BR2_INIT_NONE` means *none*.** No init scripts, and no `/etc/fstab` either.
+  `mount -a` then mounts nothing, `/sys` never appears, and weston fails with
+  `no drm device found` — while `/dev/dri/card0` exists and works fine, because
+  devtmpfs is mounted by the kernel. libudev enumerates by walking `/sys`, not by
+  reading udevd's database, so no `/sys` means no devices at all.
+- **`BR2_PACKAGE_EUDEV=y` does nothing on its own.** It hangs off the /dev
+  management choice, so the symbol to set is
+  `BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_EUDEV`. Weston `depends on
+  BR2_PACKAGE_HAS_UDEV`, so getting this wrong drops weston from the build with
+  no error at all. Check the generated `.config` before starting a long build.
+- **Buildroot refuses to run if `$PATH` contains a space.** On WSL the Windows
+  PATH is appended automatically, which guarantees one. `build-desktop.sh` filters
+  those entries out rather than changing `/etc/wsl.conf`.
+- **Ubuntu 26.04 ships uutils coreutils as the default `install`**, which
+  Buildroot rejects (uutils/coreutils#12166). GNU install is on disk as
+  `gnuinstall`; `build-desktop.sh` checks for this and prints the
+  `update-alternatives` lines to fix it.
 - **Do not give a sysinit script a controlling terminal.** When a session leader
   that owns one exits, the kernel runs `disassociate_ctty()`, and on the console
   that vhangup throws away output still queued. A boot script losing its last

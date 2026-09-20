@@ -1,0 +1,8 @@
+config BR2_PACKAGE_MPINIT
+	bool "mpinit"
+	help
+	  PID 1 for master penguin linux. Reaps orphans, supervises the
+	  services listed in /etc/mpinit.conf, and shuts the system down
+	  cleanly. Installed as /sbin/init.
+
+	  Requires BR2_INIT_NONE, since it replaces the init system.

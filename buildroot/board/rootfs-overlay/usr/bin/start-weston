@@ -1,0 +1,13 @@
+#!/bin/sh
+# Launched by mpinit as a `daemon`, so it has no controlling terminal — weston
+# talks to DRM directly and does not want one.
+
+export XDG_RUNTIME_DIR=/run/user/0
+mkdir -p "$XDG_RUNTIME_DIR"
+chmod 0700 "$XDG_RUNTIME_DIR"
+
+# libseat would normally ask a seatd daemon or logind for device access. Running
+# as root, its builtin backend opens the DRM and input devices itself.
+export LIBSEAT_BACKEND=builtin
+
+exec /usr/bin/weston --backend=drm --renderer=pixman

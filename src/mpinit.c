@@ -42,7 +42,13 @@
 #define RESPAWN_WINDOW  10
 #define RESPAWN_PAUSE   5
 
-enum action { A_SYSINIT, A_RESPAWN };
+/*
+ * A_RESPAWN and A_DAEMON differ in exactly one thing: whether the service gets
+ * a controlling terminal. Only one session can own the console at a time, so
+ * handing it to every service means they fight over it. Interactive things (a
+ * shell) need it; a compositor talking to DRM does not.
+ */
+enum action { A_SYSINIT, A_RESPAWN, A_DAEMON };
 
 struct service {
     enum action action;
@@ -152,6 +158,7 @@ static void load_config(void)
 
         if      (!strcmp(verb, "sysinit")) add_service(A_SYSINIT, p);
         else if (!strcmp(verb, "respawn")) add_service(A_RESPAWN, p);
+        else if (!strcmp(verb, "daemon"))  add_service(A_DAEMON,  p);
         else                               say("unknown action in config");
     }
     fclose(f);
@@ -318,7 +325,7 @@ int main(void)
         for (i = 0; i < nservices; i++) {
             struct service *sv = &services[i];
 
-            if (sv->action != A_RESPAWN || sv->pid != 0) continue;
+            if (sv->action == A_SYSINIT || sv->pid != 0) continue;
 
             if (now - sv->window_start > RESPAWN_WINDOW) {
                 sv->window_start = now;

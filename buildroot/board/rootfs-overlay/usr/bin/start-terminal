@@ -1,0 +1,28 @@
+#!/bin/sh
+# Open a terminal on the desktop once the compositor is actually up.
+#
+# Enabled by putting `autoterm` on the kernel command line; see /etc/init.d/rcS.
+# The waiting is the point: weston creates its socket some way into startup, and
+# a client that connects before then simply fails.
+
+export XDG_RUNTIME_DIR=/run/user/0
+
+sock=""
+i=0
+while [ $i -lt 60 ]; do
+    sock=$(ls "$XDG_RUNTIME_DIR"/wayland-[0-9]* 2>/dev/null | grep -v '\.lock$' | head -1)
+    [ -n "$sock" ] && break
+    i=$((i + 1))
+    sleep 1
+done
+
+if [ -z "$sock" ]; then
+    echo "start-terminal: no wayland socket in $XDG_RUNTIME_DIR after ${i}s" >&2
+    exit 1
+fi
+
+WAYLAND_DISPLAY=$(basename "$sock")
+export WAYLAND_DISPLAY
+echo "start-terminal: connecting to $WAYLAND_DISPLAY"
+
+exec /usr/bin/weston-terminal

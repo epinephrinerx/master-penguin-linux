@@ -1,0 +1,12 @@
+# BR2_INIT_NONE means Buildroot ships no fstab and no init scripts at all — this
+# file and /etc/init.d/rcS are the whole of it.
+#
+# /dev is devtmpfs and the kernel mounts it itself (CONFIG_DEVTMPFS_MOUNT).
+# /proc and /sys are mounted by rcS before this file is read: libudev enumerates
+# DRM and input devices by walking /sys, so without it weston reports
+# "no drm device found" even though /dev/dri/card0 is sitting right there.
+sysfs    /sys       sysfs    defaults                 0 0
+devpts   /dev/pts   devpts   defaults,gid=5,mode=620  0 0
+tmpfs    /dev/shm   tmpfs    defaults,mode=1777       0 0
+tmpfs    /tmp       tmpfs    defaults,mode=1777       0 0
+tmpfs    /run       tmpfs    defaults,mode=0755       0 0

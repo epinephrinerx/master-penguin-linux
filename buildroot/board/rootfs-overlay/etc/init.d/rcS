@@ -9,6 +9,9 @@
 
 # /proc first — BusyBox mount reads /proc/mounts to work out a remount.
 mount -t proc  proc  /proc
+# Booting as an initramfs (the live ISO) the kernel does not mount devtmpfs, so
+# init may already have done this. Only mount it if nothing is there yet.
+grep -q ' /dev devtmpfs ' /proc/mounts || mount -t devtmpfs devtmpfs /dev
 # /sys before anything touches udev. libudev enumerates by walking /sys, not by
 # reading udevd's database, so with /sys missing weston reports "no drm device
 # found" while /dev/dri/card0 exists and works perfectly well.

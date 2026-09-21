@@ -266,12 +266,19 @@ int main(void)
         return 1;
     }
 
-    /* The initramfs moved devtmpfs across before switch_root, so /dev/console
-     * is already here waiting for us. */
     close(STDIN_FILENO);
     close(STDOUT_FILENO);
     close(STDERR_FILENO);
+
     fd = open("/dev/console", O_RDWR);
+    if (fd < 0) {
+        /* No /dev yet. Booting a real root filesystem, either the kernel
+         * mounted devtmpfs itself or an initramfs moved it across before
+         * switch_root. Booting *as* an initramfs — a live CD, say — neither
+         * happens, and without /dev/console there is nowhere to say so. */
+        mount("devtmpfs", "/dev", "devtmpfs", MS_NOSUID, "mode=0755");
+        fd = open("/dev/console", O_RDWR);
+    }
     if (fd >= 0) {
         dup2(fd, STDOUT_FILENO);
         dup2(fd, STDERR_FILENO);

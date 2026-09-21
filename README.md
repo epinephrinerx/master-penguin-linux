@@ -118,8 +118,23 @@ under QEMU the rendering was going to be on the CPU either way. Enable
 
 ## Running it in VirtualBox
 
-The desktop build also produces `disk.img`: a whole disk with an MBR, GRUB and
-one ext4 partition, which boots on its own with nothing passed in from outside.
+The desktop build produces two bootable artifacts:
+
+| | |
+|---|---|
+| `rootfs.iso9660` | a live CD, ~40 MB. Attach it as an optical drive and boot — nothing to convert. The root filesystem is the initramfs, so it runs in RAM and is writable. |
+| `disk.img` | a whole disk: MBR, GRUB, one ext4 partition. Boots on its own anywhere, but VirtualBox needs it converted to VDI first. |
+
+The ISO is the easier one:
+
+```sh
+wsl -d Ubuntu -- cp ~/work/br-desktop/images/rootfs.iso9660 /mnt/g/VirtualDisk/master-penguin-linux.iso
+```
+
+Then in VirtualBox: create a VM, attach the ISO to the optical drive, boot. No
+hard disk needed at all.
+
+### The disk image
 
 ```sh
 # copy it out of WSL with cp -- a PowerShell redirect corrupts binary streams
@@ -267,6 +282,18 @@ Things that cost time, written down so they only cost it once:
 - **`mount -o remount,rw /` needs `/proc` already mounted.** BusyBox `mount` reads
   `/proc/mounts` to work out what it is remounting. Put `mount -t proc proc /proc`
   first in `rcS`, or the root silently stays read-only.
+- **The ISO and the disk need separate GRUB core images.** The prefix baked into
+  a core image names the device it will be read from — `(cd)` for one,
+  `(hd0,msdos1)` for the other — and Buildroot builds only one. Trying to make a
+  single image serve both, with an embedded config that searches for its own
+  grub.cfg, fails on the ISO: `$root` stays at hd0 and the kernel load dies with
+  "cannot get C/H/S values". `board/post-image.sh` builds the second one instead.
+- **The QEMU board kernel config has `CONFIG_BLK_DEV_INITRD` off.** It only ever
+  boots from a disk, so it has no reason to carry it. The symptom is thoroughly
+  misleading: GRUB loads the initrd without complaint, the kernel discards it in
+  silence, `rdinit=/sbin/init` then fails with -2 because nothing was unpacked,
+  and the panic that follows blames a missing root filesystem. Hours can go into
+  debugging GRUB for this.
 - **`BR2_TARGET_GRUB2_INSTALL_TOOLS=y` is not optional when using genimage.**
   Without it grub2 leaves `boot.img` in its build directory and never installs it
   into the target, which is where a post-build script has to pick it up to write

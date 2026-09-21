@@ -42,3 +42,11 @@ CONFIG_E1000E=y
 # A real console on the virtual monitor, not only the serial port.
 CONFIG_VT=y
 CONFIG_VT_CONSOLE=y
+
+# initramfs support. The QEMU board config leaves this off because it only ever
+# boots from a disk, and without it the kernel silently discards whatever initrd
+# the bootloader handed it -- then fails to find /sbin/init and panics trying to
+# mount a root filesystem that was never there. The live ISO needs it: its root
+# *is* the initramfs.
+CONFIG_BLK_DEV_INITRD=y
+CONFIG_RD_GZIP=y

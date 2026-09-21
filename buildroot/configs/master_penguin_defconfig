@@ -65,12 +65,30 @@ BR2_TARGET_ROOTFS_EXT2_SIZE="768M"
 # own, with no -kernel argument doing the work from outside.
 BR2_TARGET_GRUB2=y
 BR2_TARGET_GRUB2_I386_PC=y
-BR2_TARGET_GRUB2_BUILTIN_MODULES_PC="boot linux ext2 fat squash4 part_msdos part_gpt normal biosdisk"
+BR2_TARGET_GRUB2_BUILTIN_MODULES_PC="boot linux ext2 fat squash4 part_msdos part_gpt normal biosdisk iso9660 search search_fs_file configfile echo cat test serial terminal"
+# The core image is embedded in two different places — the MBR of disk.img and
+# grub-eltorito.img on the ISO — so it cannot hardcode where grub.cfg lives.
+# "cd" is what Buildroot's iso9660 support expects: GRUB derives $root from the
+# prefix, so the menu entries resolve against the CD. The hard disk needs a
+# different prefix entirely, so board/post-image.sh builds a second core image
+# for it rather than trying to make one serve both.
+BR2_TARGET_GRUB2_BOOT_PARTITION="cd"
 # Without this, grub2 leaves boot.img in its build directory and never installs
 # it into the target — which is where post-build.sh has to pick it up for
 # genimage to write it into the MBR.
 BR2_TARGET_GRUB2_INSTALL_TOOLS=y
 BR2_PACKAGE_HOST_GENIMAGE=y
 BR2_ROOTFS_POST_BUILD_SCRIPT="$(BR2_EXTERNAL_MASTER_PENGUIN_PATH)/board/post-build.sh"
-BR2_ROOTFS_POST_IMAGE_SCRIPT="support/scripts/genimage.sh"
+BR2_ROOTFS_POST_IMAGE_SCRIPT="$(BR2_EXTERNAL_MASTER_PENGUIN_PATH)/board/post-image.sh support/scripts/genimage.sh"
 BR2_ROOTFS_POST_SCRIPT_ARGS="-c $(BR2_EXTERNAL_MASTER_PENGUIN_PATH)/board/genimage.cfg"
+
+# A live ISO as well, because a hypervisor can boot one straight from its
+# virtual optical drive — no converting a raw image into a disk format first.
+# With INITRD the root filesystem is the initramfs, so it lives in RAM and is
+# writable, and the kernel needs no ISO9660 or CDROM support at all.
+BR2_TARGET_ROOTFS_ISO9660=y
+BR2_TARGET_ROOTFS_ISO9660_GRUB2=y
+BR2_TARGET_ROOTFS_ISO9660_INITRD=y
+BR2_TARGET_ROOTFS_ISO9660_BOOT_MENU="$(BR2_EXTERNAL_MASTER_PENGUIN_PATH)/board/grub-iso.cfg"
+BR2_TARGET_ROOTFS_CPIO=y
+BR2_TARGET_ROOTFS_CPIO_GZIP=y

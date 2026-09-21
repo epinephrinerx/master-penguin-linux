@@ -27,13 +27,24 @@ lightdm
 lightdm-gtk-greeter
 lightdm-gtk-greeter-settings
 
-# Look and feel. Without a cursor theme and an icon theme, a fresh XFCE looks
-# broken rather than plain.
-greybird-gtk-theme
-elementary-xfce-icon-theme
+# Keyboard layout indicator (R-11). A switching shortcut with nothing on
+# screen to show which layout is live is how people type passwords in the
+# wrong alphabet.
+xfce4-xkb-plugin
+
+# The dock, and the overview behind it (R-03).
+plank
+xfdashboard
+
+# Look and feel. The macOS-like GTK, icon and cursor themes are fetched at
+# build time -- they are not in the archive -- so these are the fallbacks that
+# guarantee a fresh XFCE looks finished rather than broken.
 adwaita-icon-theme
 dmz-cursor-theme
 fonts-dejavu-core
 fonts-liberation
 fonts-noto-core
 fonts-noto-color-emoji
+# Inter stands in for the macOS UI typeface. Apple's own fonts cannot be
+# redistributed, so this is not a compromise made for taste.
+fonts-inter

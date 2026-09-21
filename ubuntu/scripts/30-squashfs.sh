@@ -31,12 +31,27 @@ done
 
 echo "==> squashfs (this is the slow part)"
 rm -f "$CASPER/filesystem.squashfs"
+# Almost nothing is excluded, and the two things that were are the reason this
+# needed fixing:
+#
+#   proc, sys, run, tmp — mksquashfs -e on a directory drops the directory, not
+#   just what is inside it. These are empty in a chroot anyway, and casper
+#   mounts over them at boot. Without them, "mount /run" fails, adduser cannot
+#   take its lock, the live user is never created, and the disc stops at a
+#   login prompt for an account that does not exist.
+#
+#   boot/vmlinuz-* and boot/initrd.img-* — the copies in /casper are for
+#   booting the disc. The installed system needs its own in /boot, and leaving
+#   them out produces an install that completes and then has no kernel to boot.
+#
+# What is left is genuinely disposable: apt's package cache and its lists,
+# already emptied by the chroot cleanup, excluded here as well so a partial
+# build cannot smuggle several hundred megabytes into the image.
 mksquashfs "$MP_CHROOT" "$CASPER/filesystem.squashfs" \
     -comp "$MP_COMP" -Xcompression-level "$MP_COMP_LEVEL" \
+    -mem "$MP_SQUASH_MEM" -processors "$MP_SQUASH_PROCS" \
     -noappend -no-progress \
-    -e boot/vmlinuz-* boot/initrd.img-* \
-       proc sys dev/pts run tmp/* var/tmp/* \
-       var/cache/apt/archives/*.deb var/lib/apt/lists/* \
+    -e var/cache/apt/archives var/lib/apt/lists \
     | tail -5
 
 # casper reads this to size the progress bar and to check there is room.

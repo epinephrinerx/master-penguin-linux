@@ -1,0 +1,66 @@
+#!/bin/bash
+# Create the swap file for a freshly installed system. Run by Calamares in the
+# target, after the filesystem is in place and before it finishes.
+#
+# R-13: a file inside the root filesystem, sized equal to RAM, capped at 8 GB,
+# never below 2 GB.
+#
+#   | RAM   | swap  |
+#   | 2 GB  | 2 GB  |
+#   | 4 GB  | 4 GB  |
+#   | 8 GB  | 8 GB  |
+#   | 16 GB | 8 GB  |
+#   | 32 GB | 8 GB  |
+#
+# A file rather than a partition: it can be resized later with two commands,
+# it needs no decision about partition layout at install time, and under
+# encryption (R-12) it is inside the same LUKS volume as everything else. A
+# swap partition would sit outside it holding whatever was last in memory, in
+# clear, which would undo most of the point of encrypting the disk.
+set -euo pipefail
+
+SWAPFILE=/swapfile
+
+if [ -e "$SWAPFILE" ]; then
+    echo "mp-make-swap: $SWAPFILE exists already, leaving it alone"
+    exit 0
+fi
+
+ram_kb=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)
+ram_mb=$(( ram_kb / 1024 ))
+
+# Round to the nearest gigabyte first: MemTotal is always a little under the
+# installed amount, because firmware and the kernel have taken their share
+# before it is counted. Without this, a 4 GB machine asks for 3 GB of swap.
+ram_gb=$(( (ram_mb + 512) / 1024 ))
+[ "$ram_gb" -lt 1 ] && ram_gb=1
+
+swap_gb=$ram_gb
+[ "$swap_gb" -gt 8 ] && swap_gb=8
+[ "$swap_gb" -lt 2 ] && swap_gb=2
+
+echo "mp-make-swap: ${ram_gb} GB of RAM, creating a ${swap_gb} GB swap file"
+
+# fallocate is instant but leaves a sparse file on some filesystems, and the
+# kernel refuses to swap to one of those. dd is slower and always produces
+# what swapon will accept.
+if ! fallocate -l "${swap_gb}G" "$SWAPFILE" 2>/dev/null; then
+    dd if=/dev/zero of="$SWAPFILE" bs=1M count=$(( swap_gb * 1024 )) status=none
+fi
+chmod 0600 "$SWAPFILE"
+mkswap "$SWAPFILE" >/dev/null
+swapon "$SWAPFILE" 2>/dev/null || true
+
+if ! grep -q "^${SWAPFILE}[[:space:]]" /etc/fstab; then
+    printf '%s none swap sw 0 0\n' "$SWAPFILE" >> /etc/fstab
+fi
+
+# Leave the tendency to swap low. This is a desktop: swap is there to absorb a
+# spike, not to be used while there is still real memory free.
+mkdir -p /etc/sysctl.d
+cat > /etc/sysctl.d/60-mp-swap.conf <<SYSCTL
+vm.swappiness=10
+vm.vfs_cache_pressure=50
+SYSCTL
+
+echo "mp-make-swap: done"

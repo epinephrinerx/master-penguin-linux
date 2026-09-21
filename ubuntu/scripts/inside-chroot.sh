@@ -47,6 +47,13 @@ path-exclude /usr/share/lintian/*
 path-exclude /usr/share/linda/*
 TRIM
 
+# A previous run may have been interrupted part-way through unpacking -- the
+# build machine runs out of memory, the terminal goes away, whatever. dpkg
+# then refuses to do anything until told to finish what it started. Doing
+# this unconditionally is what makes this stage safe to just run again.
+dpkg --configure -a || true
+apt-get -f install -y -qq || true
+
 apt-get update -qq
 
 # ------------------------------------------------------------------- locale
@@ -95,11 +102,21 @@ Pin: origin packages.mozilla.org
 Pin-Priority: 1000
 PIN
 apt-get update -qq
-apt-get install -y -qq firefox firefox-l10n-th thunderbird thunderbird-l10n-th
+apt-get install -y -qq firefox thunderbird
+
+# Language packs are best-effort. Mozilla ship a Thai Firefox but not a Thai
+# Thunderbird, and which locales exist changes between releases -- a missing
+# one is a small loss, not a reason to fail a half-hour build.
+for l10n in firefox-l10n-th thunderbird-l10n-th; do
+    apt-get install -y -qq "$l10n" 2>/dev/null || echo "    no $l10n available, skipping"
+done
 
 # ------------------------------------------------------------------ branding
 say "branding"
-cat > /etc/os-release <<RELEASE
+# /etc/os-release is already a symlink to /usr/lib/os-release on Ubuntu, so
+# write the real file and point the symlink at it rather than copying one
+# onto the other.
+cat > /usr/lib/os-release <<RELEASE
 NAME="${MP_NAME}"
 PRETTY_NAME="${MP_NAME} ${MP_VERSION}"
 ID=${MP_ID}
@@ -110,13 +127,170 @@ HOME_URL="https://github.com/epinephrinerx/master-penguin-linux"
 SUPPORT_URL="https://github.com/epinephrinerx/master-penguin-linux/issues"
 UBUNTU_CODENAME=${MP_SUITE}
 RELEASE
-cp /etc/os-release /usr/lib/os-release
+ln -sf ../usr/lib/os-release /etc/os-release
 echo "${MP_ID}" > /etc/hostname
 cat > /etc/hosts <<HOSTS
 127.0.0.1	localhost
 127.0.1.1	${MP_ID}
 ::1		localhost ip6-localhost ip6-loopback
 HOSTS
+
+# -------------------------------------------------------------- Thai fonts
+# R-05: the SIPA national font set -- all thirteen families, including
+# TH Sarabun New and TH SarabunPSK, the typefaces Thai official documents are
+# written in. None of them are in the Ubuntu archive; fonts-tlwg is a
+# different family altogether.
+#
+# Licence: the SIPA / Department of Intellectual Property font licence, which
+# ships with the files and is installed beside them. Its first clause permits
+# use, copying, study, modification and distribution, and forbids selling the
+# font by itself "except when sold bundled with other software" -- which is
+# what an ISO is. We do not modify the fonts, so the clauses about renaming
+# and notifying the copyright holder do not apply.
+#
+# Pinned to a commit, not a branch. A font that changes underneath the build
+# changes document metrics, and that is not a thing to find out from a
+# complaint that a form now runs onto a second page.
+say "Thai document fonts (SIPA national set)"
+FONT_REPO="${MP_TH_SARABUN_REPO:-epsilonxe/SIPAFonts}"
+FONT_REF="${MP_TH_SARABUN_REF:-0e53affcc75c330397ebf5fb4ff5d4d324826757}"
+FONTDIR=/usr/share/fonts/truetype/th-sipa
+
+tmp=$(mktemp -d)
+if curl -fsSL --max-time 180 -o "$tmp/f.zip" \
+        "https://codeload.github.com/${FONT_REPO}/zip/${FONT_REF}"; then
+    unzip -oq "$tmp/f.zip" -d "$tmp"
+    src=$(find "$tmp" -maxdepth 1 -type d -name "SIPAFonts*" | head -1)
+    install -d -m 0755 "$FONTDIR"
+
+    # The set carries "IT" variants whose filenames suggest something separate
+    # but whose internal family and style names are identical to the plain
+    # ones -- the same TH SarabunPSK Regular, the same TH Niramit AS Bold.
+    # Installing both leaves fontconfig picking between duplicates, which it
+    # does consistently until something invalidates its cache and then
+    # silently differently. Two families are affected, Sarabun and Niramit,
+    # which is why this is a pattern and not a list of four filenames.
+    installed=0
+    skipped_it=0
+    skipped_dup=0
+    seen_keys=""
+
+    find "$src" -maxdepth 1 -iname "*.ttf" -print0 | sort -z | \
+    while IFS= read -r -d '' f; do
+        base=$(basename "$f")
+
+        case "$base" in
+            *"IT·"*|*" IT "*|*" IT."*)
+                skipped_it=$((skipped_it + 1))
+                continue
+                ;;
+        esac
+
+        key=$(fc-query --format '%{family[0]}|%{style[0]}' "$f" 2>/dev/null)
+        [ -z "$key" ] && continue
+
+        # Safety net: if a duplicate family and style survives the pattern
+        # above, drop it and say so rather than shipping both.
+        case "$seen_keys" in
+            *"[$key]"*)
+                echo "    duplicate, skipped: $base ($key)" >&2
+                skipped_dup=$((skipped_dup + 1))
+                continue
+                ;;
+        esac
+        seen_keys="$seen_keys[$key]"
+
+        install -m 0644 "$f" "$FONTDIR/"
+        installed=$((installed + 1))
+    done
+
+    # The licence travels with the files it covers.
+    [ -f "$src/LICENSE" ]   && install -m 0644 "$src/LICENSE"   "$FONTDIR/LICENSE"
+    [ -f "$src/README.md" ] && install -m 0644 "$src/README.md" "$FONTDIR/README.md"
+    cat > "$FONTDIR/SOURCE" <<SOURCE
+Fetched from https://github.com/${FONT_REPO}
+Commit ${FONT_REF}
+Licence: SIPA / Department of Intellectual Property font licence, see LICENSE.
+
+The "IT" variants in the upstream set are deliberately not installed: their
+internal family and style names duplicate the plain ones, which leaves
+fontconfig choosing between identical entries.
+SOURCE
+
+    fc-cache -f >/dev/null 2>&1 || true
+    echo "    $(ls "$FONTDIR"/*.ttf 2>/dev/null | wc -l) faces installed"
+    echo "    families: $(fc-query --format '%{family[0]}\n' "$FONTDIR"/*.ttf 2>/dev/null | sort -u | wc -l)"
+else
+    echo "    could not fetch the fonts -- continuing without them" >&2
+fi
+rm -rf "$tmp"
+
+# ------------------------------------------------------------ system policy
+say "system policy"
+
+# R-08: Ubuntu's crash reporter. When something segfaults it offers to send a
+# report to Ubuntu, in a dialog that says "Ubuntu has experienced an internal
+# error" -- the wrong product name, to a place with no interest in the report.
+# Purged rather than disabled: a disabled apport is one upgrade away from
+# being enabled again.
+apt-get purge -y -qq apport apport-symptoms 2>/dev/null || true
+# Core dumps still land somewhere a person can go and look for them.
+mkdir -p /etc/sysctl.d
+cat > /etc/sysctl.d/60-mp-coredump.conf <<SYSCTL
+kernel.core_pattern=/var/crash/core.%e.%p
+SYSCTL
+
+# R-07: security updates install by themselves, but nothing reboots the
+# machine while somebody is working on it.
+cat > /etc/apt/apt.conf.d/52mp-unattended <<UNATTENDED
+Unattended-Upgrade::Automatic-Reboot "false";
+Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
+Unattended-Upgrade::Remove-Unused-Dependencies "true";
+UNATTENDED
+
+# R-14: firewall on, deny incoming.
+#
+# The mDNS rule is not optional. CUPS finds network printers over multicast
+# DNS on UDP 5353, and denying incoming without allowing it breaks printer
+# discovery in a way that looks like a broken printer rather than a firewall.
+# R-04 puts printing on the disc as an essential, so breaking it here would
+# undo that.
+ufw --force disable >/dev/null 2>&1 || true
+ufw default deny incoming  >/dev/null 2>&1 || true
+ufw default allow outgoing >/dev/null 2>&1 || true
+ufw allow in 5353/udp comment "mDNS: printer and service discovery" >/dev/null 2>&1 || true
+ufw allow in 631/udp  comment "CUPS browsing" >/dev/null 2>&1 || true
+ufw --force enable >/dev/null 2>&1 || true
+systemctl enable ufw.service >/dev/null 2>&1 || true
+
+# --------------------------------------------------------------- keyboard
+say "keyboard layouts"
+
+# R-11: US English and Thai Kedmanee everywhere, Left Alt + Left Shift to
+# switch.
+#
+# US first is deliberate. If Thai is the layout a greeter starts in, the first
+# thing anyone types is a password in the wrong alphabet, and the login fails
+# without saying why.
+cat > /etc/default/keyboard <<KEYBOARD
+XKBMODEL="pc105"
+XKBLAYOUT="us,th"
+XKBVARIANT=","
+XKBOPTIONS="grp:lalt_lshift_toggle,grp_led:scroll"
+BACKSPACE="guess"
+KEYBOARD
+
+# The console follows the same setting.
+mkdir -p /etc/X11/xorg.conf.d
+cat > /etc/X11/xorg.conf.d/00-keyboard.conf <<XORGKB
+Section "InputClass"
+        Identifier "system-keyboard"
+        MatchIsKeyboard "on"
+        Option "XkbModel" "pc105"
+        Option "XkbLayout" "us,th"
+        Option "XkbOptions" "grp:lalt_lshift_toggle"
+EndSection
+XORGKB
 
 # ------------------------------------------------------------------ services
 say "services"
@@ -136,6 +310,55 @@ flatpak remote-add --if-not-exists flathub \
 say "initramfs"
 update-initramfs -u -k all
 
+# --------------------------------------------------------------- live session
+say "live session"
+# casper creates the live user at boot and reads its name from here. Without
+# FLAVOUR set, casper overrides USERNAME and HOST with a string it works out at
+# boot, and the autologin config below would then name a user that does not
+# exist.
+cat > /etc/casper.conf <<CASPER
+export USERNAME="mplive"
+export USERFULLNAME="Master Penguin Live"
+export HOST="${MP_ID}"
+export BUILD_SYSTEM="Ubuntu"
+export FLAVOUR="Master Penguin"
+CASPER
+
+# R-10: the live session, and therefore the installer, starts in Thai.
+#
+# Calamares takes its initial language from the locale it is launched in. The
+# language dropdown on its first page overrides this and carries the choice
+# into the installed system, so defaulting to Thai costs an English speaker
+# one click and saves everyone else from starting in a language they did not
+# ask for.
+cat > /etc/default/locale <<LOCALE
+LANG=th_TH.UTF-8
+LC_MESSAGES=th_TH.UTF-8
+LC_NUMERIC=th_TH.UTF-8
+LC_TIME=th_TH.UTF-8
+LC_MONETARY=th_TH.UTF-8
+LC_PAPER=th_TH.UTF-8
+LC_MEASUREMENT=th_TH.UTF-8
+LOCALE
+# th_TH.UTF-8 was generated earlier alongside en_US.UTF-8, so both are there
+# and switching in the installer needs no further work.
+
+# Autologin for the live session.
+#
+# casper ships a script that does this itself, but it writes into a
+# [SeatDefaults] section -- the LightDM syntax from before 1.12. Current
+# LightDM ignores that section outright, so the settings land in the file and
+# do nothing, and the live disc stops at a login prompt asking for a password
+# nobody was ever given. Write it again under [Seat:*], where it is read.
+install -d -m 0755 /etc/lightdm/lightdm.conf.d
+cat > /etc/lightdm/lightdm.conf.d/10-mp-live.conf <<LIGHTDM
+[Seat:*]
+autologin-user=mplive
+autologin-user-timeout=0
+autologin-session=xfce
+allow-guest=false
+LIGHTDM
+
 # ----------------------------------------------------------------- calamares
 say "installing the installer"
 rm -rf /etc/calamares
@@ -144,6 +367,14 @@ cp -a /tmp/calamares/settings.conf          /etc/calamares/
 cp -a /tmp/calamares/modules                /etc/calamares/
 cp -a /tmp/calamares/branding               /etc/calamares/
 cp -a /tmp/calamares/netinstall-desktops.yaml /etc/calamares/
+
+# Scripts the installer calls in the target system: mp-make-swap (R-13) and
+# mp-finish-install, which undoes the live-session settings and applies the
+# things Calamares has no module for.
+if [ -d /tmp/overlay ]; then
+    cp -a /tmp/overlay/. /
+    chmod 0755 /usr/local/sbin/mp-make-swap /usr/local/sbin/mp-finish-install
+fi
 
 # A launcher the live session can actually click. pkexec rather than sudo: the
 # installer is a GUI application and needs a polkit prompt, not a terminal.
@@ -172,10 +403,20 @@ install -m 0755 /usr/share/applications/mp-install.desktop /etc/skel/Desktop/
 
 # -------------------------------------------------------------------- tidy up
 say "cleaning up"
+# casper mounts over these at boot, so they have to exist in the image as
+# empty directories. An image without /run is one where adduser cannot take
+# its lock and the live user is never created.
+mkdir -p /proc /sys /run /tmp /var/tmp /mnt /media
+chmod 1777 /tmp /var/tmp
 apt-get autoremove -y -qq
 apt-get clean
 rm -f /usr/sbin/policy-rc.d
 rm -rf /tmp/* /var/tmp/* /var/lib/apt/lists/* /var/cache/apt/archives/*.deb
+# Hand DNS back to systemd-resolved. The build replaced this with a real file
+# so apt could resolve names inside the chroot.
+rm -f /etc/resolv.conf
+ln -sf ../run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
+
 rm -f /etc/machine-id /var/lib/dbus/machine-id
 : > /etc/machine-id
 find /var/log -type f -exec truncate -s 0 {} +

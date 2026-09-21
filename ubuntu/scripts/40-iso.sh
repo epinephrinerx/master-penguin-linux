@@ -20,32 +20,42 @@ sed -e "s|@NAME@|$MP_NAME|g" -e "s|@VERSION@|$MP_VERSION|g" \
     "$HERE/grub/grub.cfg" > "$MP_ISODIR/boot/grub/grub.cfg"
 
 echo "==> BIOS core image"
-# The embedded config is what GRUB runs before it has a prefix it can trust:
-# find the disc by a file only this disc has, then read the real menu from it.
-cat > "$MP_OUT/embed-bios.cfg" <<'EMBED'
-search --no-floppy --set=root --file /.disk/mp-release
-set prefix=($root)/boot/grub
-configfile ($root)/boot/grub/grub.cfg
-EMBED
-grub-mkstandalone \
-    --format=i386-pc \
-    --output="$MP_OUT/core.img" \
-    --install-modules="linux normal iso9660 biosdisk search search_fs_file memdisk tar ls echo configfile part_msdos part_gpt ext2 fat" \
-    --modules="linux normal iso9660 biosdisk search search_fs_file" \
-    --locales="" --fonts="" \
-    "boot/grub/grub.cfg=$MP_OUT/embed-bios.cfg"
-cat /usr/lib/grub/i386-pc/cdboot.img "$MP_OUT/core.img" > "$MP_ISODIR/boot/grub/bios.img"
+# grub-mkimage with the eltorito format, not grub-mkstandalone.
+#
+# mkstandalone packs everything into a memdisk and points prefix at it. That
+# survives being written to a disk; it does not survive being wrapped as an El
+# Torito boot image. GRUB comes up looking for /boot/grub/i386-pc/ls.mod on a
+# device it has not identified, finds nothing, and drops to a rescue prompt —
+# which looks exactly like a disc that failed to boot.
+#
+# The eltorito format carries its own boot sector and takes a plain prefix.
+# Left as a path with no device in front of it, GRUB resolves it against
+# whatever it booted from, which on a CD is the CD — no search required. This
+# is how the Ubuntu discs themselves are made.
+grub-mkimage \
+    --format=i386-pc-eltorito \
+    --output="$MP_ISODIR/boot/grub/bios.img" \
+    --prefix="/boot/grub" \
+    biosdisk iso9660 normal linux configfile search search_fs_file \
+    echo test ls cat part_msdos part_gpt ext2 fat all_video gfxterm
 
+# efi_uga is deliberately absent: UGA is the pre-GOP graphics protocol and
+# only ever existed for 32-bit EFI, so there is no x86_64-efi module for it.
 echo "==> EFI bootloader"
 cat > "$MP_OUT/embed-efi.cfg" <<'EMBED'
-search --no-floppy --set=root --file /.disk/mp-release
+# The EFI path finds the disc with search already, but the same explicit
+# attempts cost nothing and keep the two paths reading the same way.
+if [ -f (cd0)/.disk/mp-release ]; then set root=(cd0); fi
+if [ ! -f ($root)/.disk/mp-release ]; then
+    search --no-floppy --set=root --file /.disk/mp-release
+fi
 set prefix=($root)/boot/grub
 configfile ($root)/boot/grub/grub.cfg
 EMBED
 grub-mkstandalone \
     --format=x86_64-efi \
     --output="$MP_ISODIR/EFI/boot/bootx64.efi" \
-    --modules="linux normal iso9660 search search_fs_file part_gpt part_msdos fat ext2 all_video efi_gop efi_uga configfile echo" \
+    --modules="linux normal iso9660 search search_fs_file part_gpt part_msdos fat ext2 all_video efi_gop configfile echo test" \
     --locales="" --fonts="" \
     "boot/grub/grub.cfg=$MP_OUT/embed-efi.cfg"
 

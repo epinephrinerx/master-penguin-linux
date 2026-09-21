@@ -1,66 +1,140 @@
+# The software selection page. R-04 decides what is on it; R-10 requires it to
+# be readable in Thai, which nothing else does for us — this is the one page
+# whose text this project writes.
+#
+# Two rules this list has to keep:
+#
+#   1. Unticking everything still leaves a working system. Nothing here is
+#      load-bearing. The disc already carries a desktop, a browser, a mail
+#      client, a file manager, a terminal, media codecs, printing and all
+#      three package managers.
+#   2. Every group says what it costs, because somebody on a slow connection
+#      is choosing how long they are going to wait.
+#
+# Groups marked as already installed are on the disc. They are shown ticked
+# and immutable so people can see what they are getting rather than wonder
+# where it came from.
+
 - name: "Desktop environment"
-  description: "XFCE is installed already. The others are downloaded now, so they need a network connection."
+  name[th]: "เดสก์ท็อป"
+  description: "XFCE is on the disc already. The others are downloaded now, so they need a network connection."
+  description[th]: "XFCE อยู่ในแผ่นแล้ว ตัวอื่นจะดาวน์โหลดตอนนี้ จึงต้องต่ออินเทอร์เน็ต"
   selected: true
   hidden: false
   expanded: true
   subgroups:
-    - name: "XFCE (installed)"
-      description: "Light and fast. Already on this disc, nothing to download."
+    - name: "XFCE — installed"
+      name[th]: "XFCE — ติดตั้งแล้ว"
+      description: "Light and quick. Already here, nothing to download."
+      description[th]: "เบาและเร็ว อยู่ในแผ่นแล้ว ไม่ต้องดาวน์โหลด"
       selected: true
       critical: false
       immutable: true
       packages:
         - xfce4-session
 
-    - name: "GNOME"
-      description: "What stock Ubuntu looks like. Wayland. Around 1.2 GB to download."
+    - name: "GNOME — about 1.2 GB"
+      name[th]: "GNOME — ประมาณ 1.2 GB"
+      description: "What stock Ubuntu looks like. Runs on Wayland."
+      description[th]: "หน้าตาแบบ Ubuntu มาตรฐาน ทำงานบน Wayland"
       selected: false
       critical: false
       packages:
         - gnome-shell
         - gnome-session
         - gnome-control-center
-        - gnome-tweaks
         - nautilus
         - gnome-terminal
         - gdm3
 
-    - name: "KDE Plasma"
-      description: "Highly configurable, and the most polished out of the box. Around 900 MB to download."
+    - name: "KDE Plasma — about 900 MB"
+      name[th]: "KDE Plasma — ประมาณ 900 MB"
+      description: "Highly configurable, and the most finished-looking out of the box."
+      description[th]: "ปรับแต่งได้ละเอียด และหน้าตาเรียบร้อยที่สุดตั้งแต่ติดตั้งเสร็จ"
       selected: false
       critical: false
       packages:
         - kde-plasma-desktop
-        - plasma-workspace-wayland
         - dolphin
         - konsole
         - kate
         - sddm
 
-- name: "Extras"
-  description: "Optional, and none of it is needed for the system to work."
-  selected: false
+- name: "Already on the disc"
+  name[th]: "มีอยู่ในแผ่นแล้ว"
+  description: "Installed whether or not there is a network. Listed so you can see what is included."
+  description[th]: "ติดตั้งให้เสมอ ไม่ว่าจะมีเน็ตหรือไม่ แสดงไว้เพื่อให้เห็นว่ามีอะไรบ้าง"
+  selected: true
   hidden: false
   expanded: false
   subgroups:
-    - name: "LibreOffice"
-      description: "Documents, spreadsheets and presentations. Around 600 MB."
+    - name: "Media playback and codecs"
+      name[th]: "เล่นสื่อและตัวถอดรหัส"
+      description: "VLC and the codecs for ordinary video and audio files."
+      description[th]: "VLC และตัวถอดรหัสสำหรับไฟล์วิดีโอและเสียงทั่วไป"
+      selected: true
+      immutable: true
+      packages:
+        - vlc
+
+    - name: "Printing and scanning"
+      name[th]: "การพิมพ์และสแกน"
+      description: "CUPS, drivers for common printers, and scanner support."
+      description[th]: "CUPS ไดรเวอร์เครื่องพิมพ์ที่พบบ่อย และการสแกน"
+      selected: true
+      immutable: true
+      packages:
+        - simple-scan
+
+- name: "Optional — downloaded during installation"
+  name[th]: "ตัวเลือกเพิ่มเติม — ดาวน์โหลดระหว่างติดตั้ง"
+  description: "None of this is needed for the system to work. With no network connection these are skipped."
+  description[th]: "ไม่จำเป็นต่อการทำงานของระบบ หากไม่มีอินเทอร์เน็ตจะข้ามรายการเหล่านี้"
+  selected: false
+  hidden: false
+  expanded: true
+  subgroups:
+    - name: "Office — about 700 MB"
+      name[th]: "ชุดสำนักงาน — ประมาณ 700 MB"
+      description: "LibreOffice, with Thai spelling and hyphenation."
+      description[th]: "LibreOffice พร้อมการตรวจสะกดและการตัดคำภาษาไทย"
       selected: false
       packages:
         - libreoffice
         - libreoffice-l10n-th
 
-    - name: "Media"
-      description: "Video and music playback, plus the codecs for it."
+    - name: "Graphics — about 550 MB"
+      name[th]: "งานกราฟิก — ประมาณ 550 MB"
+      description: "GIMP for photographs, Inkscape for drawing."
+      description[th]: "GIMP สำหรับรูปภาพ Inkscape สำหรับงานวาด"
       selected: false
       packages:
-        - vlc
-        - ubuntu-restricted-extras
+        - gimp
+        - inkscape
 
-    - name: "Development"
-      description: "Compilers, git, and an editor."
+    - name: "Development — about 400 MB"
+      name[th]: "เครื่องมือพัฒนา — ประมาณ 400 MB"
+      description: "Compilers, git, and Python packaging."
+      description[th]: "คอมไพเลอร์ git และเครื่องมือแพ็กเกจของ Python"
       selected: false
       packages:
         - build-essential
         - git
         - python3-pip
+
+    - name: "Backup — about 50 MB"
+      name[th]: "สำรองข้อมูล — ประมาณ 50 MB"
+      description: "Timeshift, which takes snapshots you can roll back to."
+      description[th]: "Timeshift เก็บสแนปช็อตให้ย้อนกลับได้"
+      selected: false
+      packages:
+        - timeshift
+
+    - name: "Remote access — about 80 MB"
+      name[th]: "การเข้าถึงระยะไกล — ประมาณ 80 MB"
+      description: "An SSH server for reaching this machine, and Remmina for reaching others."
+      description[th]: "เซิร์ฟเวอร์ SSH เพื่อให้เข้าถึงเครื่องนี้ได้ และ Remmina เพื่อเข้าถึงเครื่องอื่น"
+      selected: false
+      packages:
+        - openssh-server
+        - remmina

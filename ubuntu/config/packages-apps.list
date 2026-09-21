@@ -11,14 +11,33 @@ gnome-software-plugin-flatpak
 snapd
 flatpak
 
-# --- printing -------------------------------------------------------------
-# cups-filters and a generic PPD set only. The printer-driver-* metapackages
-# are hundreds of megabytes of vendor blobs for printers nobody here owns.
+# --- printing and scanning (R-04: an on-disc group) -----------------------
+# Named drivers, not printer-driver-all, which is hundreds of megabytes of
+# vendor blobs for printers nobody here owns. gutenprint and escpr between
+# them cover most of what people actually plug in; everything modern is
+# driverless over IPP anyway, which is what sane-airscan and ipp-usb are for.
 cups
 cups-client
 cups-filters
 system-config-printer
 avahi-daemon
+simple-scan
+printer-driver-gutenprint
+printer-driver-escpr
+sane-airscan
+ipp-usb
+
+# --- media (R-04: an on-disc group) ---------------------------------------
+# Deliberately NOT ubuntu-restricted-extras. That pulls
+# ttf-mscorefonts-installer, which downloads fonts from the network while it
+# configures -- so an offline install would fail on the one group that exists
+# to work offline. The codecs are named directly and the fonts left out.
+gstreamer1.0-plugins-good
+gstreamer1.0-plugins-bad
+gstreamer1.0-plugins-ugly
+gstreamer1.0-libav
+libavcodec-extra
+vlc
 
 # --- Thai ------------------------------------------------------------------
 # Without these, Thai renders as boxes and cannot be typed at all.

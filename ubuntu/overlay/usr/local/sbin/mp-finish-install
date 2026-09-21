@@ -1,0 +1,84 @@
+#!/bin/bash
+# Everything the installed system needs that Calamares does not do itself.
+# Run in the target by the shellprocess step, after packages, before finish.
+set -uo pipefail   # not -e: one failure here should not fail an install that
+                   # has already copied the system across successfully.
+
+log() { echo "mp-finish-install: $*"; }
+
+# --------------------------------------------------------------- R-01
+# Autologin belongs to the live disc only. Left in place, every installed
+# machine would boot straight to a desktop with no password asked — which is
+# the opposite of what R-01 asks for, arrived at by fixing only half of it.
+rm -f /etc/lightdm/lightdm.conf.d/10-mp-live.conf
+rm -f /etc/casper.conf
+rm -f /etc/sudoers.d/mp-live
+rm -f /etc/xdg/autostart/mp-install.desktop
+rm -f /usr/share/applications/mp-install.desktop
+rm -f /etc/skel/Desktop/mp-install.desktop
+# ...and for the account the installer just made.
+for home in /home/*; do
+    [ -d "$home/Desktop" ] && rm -f "$home/Desktop/mp-install.desktop"
+done
+log "live-session settings removed"
+
+# --------------------------------------------------------------- R-11
+# Two keyboard layouts, US first, switched with Left Alt + Left Shift.
+#
+# Calamares writes whichever single layout was chosen on its keyboard page.
+# This replaces that: the requirement is for both layouts everywhere, and
+# without the Thai one a person cannot type their own name into their own
+# machine after installing it.
+cat > /etc/default/keyboard <<'KEYBOARD'
+XKBMODEL="pc105"
+XKBLAYOUT="us,th"
+XKBVARIANT=","
+XKBOPTIONS="grp:lalt_lshift_toggle,grp_led:scroll"
+BACKSPACE="guess"
+KEYBOARD
+mkdir -p /etc/X11/xorg.conf.d
+cat > /etc/X11/xorg.conf.d/00-keyboard.conf <<'XORGKB'
+Section "InputClass"
+        Identifier "system-keyboard"
+        MatchIsKeyboard "on"
+        Option "XkbModel" "pc105"
+        Option "XkbLayout" "us,th"
+        Option "XkbOptions" "grp:lalt_lshift_toggle"
+EndSection
+XORGKB
+log "keyboard layouts set to us,th"
+
+# --------------------------------------------------------------- R-13
+[ -x /usr/local/sbin/mp-make-swap ] && /usr/local/sbin/mp-make-swap
+
+# --------------------------------------------------------------- R-14
+# ufw state does not survive being copied out of the live filesystem intact,
+# so set it again where it will actually run.
+if command -v ufw >/dev/null 2>&1; then
+    ufw --force reset >/dev/null 2>&1
+    ufw default deny incoming  >/dev/null 2>&1
+    ufw default allow outgoing >/dev/null 2>&1
+    # Without this, CUPS cannot see network printers and it looks like a
+    # printer fault rather than a firewall rule.
+    ufw allow in 5353/udp comment "mDNS: printer and service discovery" >/dev/null 2>&1
+    ufw allow in 631/udp  comment "CUPS browsing" >/dev/null 2>&1
+    ufw --force enable >/dev/null 2>&1
+    systemctl enable ufw.service >/dev/null 2>&1
+    log "firewall enabled"
+fi
+
+# --------------------------------------------------------------- R-06
+# Make sure the bootloader packages for the firmware that is *not* in use stay
+# installed. A machine installed under BIOS today may be moved to a VM booting
+# EFI tomorrow, and finding out then is a rescue disc away.
+apt-get install -y --no-install-recommends \
+    grub-efi-amd64-signed shim-signed grub-pc efibootmgr >/dev/null 2>&1
+
+# The live system is gone from here on; its packages should go with it.
+apt-get purge -y casper >/dev/null 2>&1
+apt-get purge -y calamares calamares-settings-ubuntu-common >/dev/null 2>&1
+apt-get autoremove -y >/dev/null 2>&1
+
+update-initramfs -u >/dev/null 2>&1
+log "done"
+exit 0

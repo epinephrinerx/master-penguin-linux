@@ -67,6 +67,39 @@ rfkill
 iw
 wpasupplicant
 
+# --- bootloaders (R-06) ---------------------------------------------------
+# Both firmwares, because the installer has to put down whichever one the
+# machine it lands on actually boots. Only grub-pc was here before, pulled in
+# as somebody else's dependency, which left EFI installs with nothing to
+# install -- and EFI is what every machine made this decade uses.
+# The -signed variants are what makes Secure Boot possible at all.
+grub-pc
+grub-efi-amd64-signed
+shim-signed
+efibootmgr
+os-prober
+
+# --- updates (R-07) -------------------------------------------------------
+# unattended-upgrades arrives on its own and applies security updates in
+# silence. These two are what make updates visible to the person using the
+# machine, and let them ask for one on purpose.
+update-manager
+update-notifier
+unattended-upgrades
+
+# --- drivers (R-09) -------------------------------------------------------
+ubuntu-drivers-common
+software-properties-gtk
+
+# --- firewall (R-14) ------------------------------------------------------
+ufw
+gufw
+
+# --- boot splash (R-02) ---------------------------------------------------
+plymouth
+plymouth-themes
+plymouth-label
+
 # --- packaging ------------------------------------------------------------
 # apt is already there; these are what make .deb handling complete.
 apt-utils

@@ -37,7 +37,12 @@ mount -t proc  none "$MP_CHROOT/proc";  MOUNTED="$MOUNTED $MP_CHROOT/proc"
 mount -t sysfs none "$MP_CHROOT/sys";   MOUNTED="$MOUNTED $MP_CHROOT/sys"
 mount -t tmpfs none "$MP_CHROOT/run";   MOUNTED="$MOUNTED $MP_CHROOT/run"
 
-# DNS for apt. The chroot has no resolv.conf of its own yet.
+# DNS for apt. Once systemd-resolved is installed, /etc/resolv.conf in the
+# chroot is a symlink into /run, which nothing has mounted -- cp refuses to
+# write through a dangling symlink, so replace it with a real file. The
+# symlink is put back at the end of inside-chroot.sh, where it belongs for
+# the installed system.
+rm -f "$MP_CHROOT/etc/resolv.conf"
 cp -f /etc/resolv.conf "$MP_CHROOT/etc/resolv.conf"
 
 echo "==> staging scripts and lists"
@@ -51,7 +56,13 @@ install -m 0644 "$HERE"/config/packages-*.list  "$MP_CHROOT/tmp/"
     echo "MP_ID='$MP_ID'"
     echo "MP_VERSION='$MP_VERSION'"
     echo "MP_FIRMWARE='$MP_FIRMWARE'"
+    echo "MP_TH_SARABUN_REPO='$MP_TH_SARABUN_REPO'"
+    echo "MP_TH_SARABUN_REF='$MP_TH_SARABUN_REF'"
 } > "$MP_CHROOT/tmp/mp-build.conf"
+
+echo "==> staging overlay"
+rm -rf "$MP_CHROOT/tmp/overlay"
+cp -a "$HERE/overlay" "$MP_CHROOT/tmp/overlay"
 
 echo "==> staging calamares"
 rm -rf "$MP_CHROOT/tmp/calamares"

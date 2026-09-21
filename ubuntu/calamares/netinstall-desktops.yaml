@@ -1,0 +1,66 @@
+- name: "Desktop environment"
+  description: "XFCE is installed already. The others are downloaded now, so they need a network connection."
+  selected: true
+  hidden: false
+  expanded: true
+  subgroups:
+    - name: "XFCE (installed)"
+      description: "Light and fast. Already on this disc, nothing to download."
+      selected: true
+      critical: false
+      immutable: true
+      packages:
+        - xfce4-session
+
+    - name: "GNOME"
+      description: "What stock Ubuntu looks like. Wayland. Around 1.2 GB to download."
+      selected: false
+      critical: false
+      packages:
+        - gnome-shell
+        - gnome-session
+        - gnome-control-center
+        - gnome-tweaks
+        - nautilus
+        - gnome-terminal
+        - gdm3
+
+    - name: "KDE Plasma"
+      description: "Highly configurable, and the most polished out of the box. Around 900 MB to download."
+      selected: false
+      critical: false
+      packages:
+        - kde-plasma-desktop
+        - plasma-workspace-wayland
+        - dolphin
+        - konsole
+        - kate
+        - sddm
+
+- name: "Extras"
+  description: "Optional, and none of it is needed for the system to work."
+  selected: false
+  hidden: false
+  expanded: false
+  subgroups:
+    - name: "LibreOffice"
+      description: "Documents, spreadsheets and presentations. Around 600 MB."
+      selected: false
+      packages:
+        - libreoffice
+        - libreoffice-l10n-th
+
+    - name: "Media"
+      description: "Video and music playback, plus the codecs for it."
+      selected: false
+      packages:
+        - vlc
+        - ubuntu-restricted-extras
+
+    - name: "Development"
+      description: "Compilers, git, and an editor."
+      selected: false
+      packages:
+        - build-essential
+        - git
+        - python3-pip

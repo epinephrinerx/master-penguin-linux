@@ -1,0 +1,42 @@
+# Applications and the package-management front ends.
+
+# --- Software center ------------------------------------------------------
+# gnome-software is the one front end that handles deb, snap and flatpak
+# together. Ubuntu's own App Center is a Flutter snap and cannot list debs.
+gnome-software
+gnome-software-plugin-snap
+gnome-software-plugin-flatpak
+
+# --- the three packaging systems -----------------------------------------
+snapd
+flatpak
+
+# --- printing -------------------------------------------------------------
+# cups-filters and a generic PPD set only. The printer-driver-* metapackages
+# are hundreds of megabytes of vendor blobs for printers nobody here owns.
+cups
+cups-client
+cups-filters
+system-config-printer
+avahi-daemon
+
+# --- Thai ------------------------------------------------------------------
+# Without these, Thai renders as boxes and cannot be typed at all.
+fonts-thai-tlwg
+fonts-noto-cjk
+language-pack-th
+language-pack-gnome-th
+ibus
+ibus-libthai
+libthai-data
+
+# --- installer -------------------------------------------------------------
+calamares
+calamares-settings-ubuntu-common
+
+# --- misc ------------------------------------------------------------------
+xdg-desktop-portal
+xdg-desktop-portal-gtk
+xdg-user-dirs
+xdg-utils
+gparted

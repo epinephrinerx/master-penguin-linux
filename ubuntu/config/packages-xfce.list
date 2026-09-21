@@ -1,0 +1,39 @@
+# XFCE, assembled by hand rather than by pulling in the xubuntu-desktop
+# metapackage, which drags in a great deal this distro does not want.
+
+xorg
+xserver-xorg
+xfce4-session
+xfwm4
+xfdesktop4
+xfce4-panel
+xfce4-settings
+xfce4-terminal
+xfce4-appfinder
+xfce4-notifyd
+xfce4-power-manager
+xfce4-screenshooter
+xfce4-taskmanager
+xfce4-whiskermenu-plugin
+thunar
+thunar-archive-plugin
+thunar-volman
+tumbler
+mousepad
+ristretto
+xarchiver
+galculator
+lightdm
+lightdm-gtk-greeter
+lightdm-gtk-greeter-settings
+
+# Look and feel. Without a cursor theme and an icon theme, a fresh XFCE looks
+# broken rather than plain.
+greybird-gtk-theme
+elementary-xfce-icon-theme
+adwaita-icon-theme
+dmz-cursor-theme
+fonts-dejavu-core
+fonts-liberation
+fonts-noto-core
+fonts-noto-color-emoji

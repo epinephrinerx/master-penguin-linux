@@ -1,0 +1,92 @@
+# Everything a running Ubuntu needs that minbase does not give you.
+# One package per line; # starts a comment.
+
+# --- init, boot, kernel ---------------------------------------------------
+systemd
+systemd-sysv
+systemd-resolved
+systemd-timesyncd
+dbus
+linux-image-generic
+initramfs-tools
+
+# --- live boot ------------------------------------------------------------
+# casper is Ubuntu's live-CD glue: it finds the squashfs, stacks a writable
+# overlay on top, and creates the live user before the session starts.
+casper
+# lupin-casper was dropped from Ubuntu: it existed for Wubi, the Windows
+# installer, which has been gone for years.
+discover
+laptop-detect
+os-prober
+
+# --- the things that make a terminal usable -------------------------------
+# bash is in minbase, but without these it is a bash with nothing to run.
+bash-completion
+coreutils
+findutils
+grep
+sed
+gawk
+less
+nano
+vim-tiny
+file
+tree
+psmisc
+procps
+htop
+lsof
+strace
+man-db
+
+# --- storage, filesystems -------------------------------------------------
+e2fsprogs
+dosfstools
+ntfs-3g
+exfatprogs
+btrfs-progs
+gdisk
+parted
+udisks2
+gvfs
+gvfs-backends
+gvfs-fuse
+
+# --- networking -----------------------------------------------------------
+network-manager
+network-manager-gnome
+iproute2
+iputils-ping
+wget
+curl
+ca-certificates
+openssh-client
+rfkill
+# wireless-tools (iwconfig) was dropped from Ubuntu 26.04; iw replaces it.
+iw
+wpasupplicant
+
+# --- packaging ------------------------------------------------------------
+# apt is already there; these are what make .deb handling complete.
+apt-utils
+apt-transport-https
+gnupg
+software-properties-common
+gdebi-core
+
+# --- hardware, sound ------------------------------------------------------
+pciutils
+usbutils
+util-linux
+pipewire
+pipewire-pulse
+pipewire-alsa
+wireplumber
+alsa-utils
+
+# --- locale, time ---------------------------------------------------------
+locales
+tzdata
+sudo
+polkitd

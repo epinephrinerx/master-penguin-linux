@@ -73,6 +73,14 @@ BR2_TARGET_GRUB2_BUILTIN_MODULES_PC="boot linux ext2 fat squash4 part_msdos part
 # different prefix entirely, so board/post-image.sh builds a second core image
 # for it rather than trying to make one serve both.
 BR2_TARGET_GRUB2_BOOT_PARTITION="cd"
+
+# EFI as well as BIOS. VirtualBox and most hypervisors now default new Linux VMs
+# to EFI firmware, which simply will not see an El Torito BIOS boot image — the
+# ISO looks blank and the VM drops to a boot-device prompt. Building both makes
+# the ISO boot either way; the disk image stays BIOS-only.
+BR2_TARGET_GRUB2_X86_64_EFI=y
+BR2_TARGET_GRUB2_BUILTIN_MODULES_EFI="boot linux ext2 fat part_msdos part_gpt normal iso9660 search search_fs_file configfile echo cat test efi_gop efi_uga"
+BR2_TARGET_GRUB2_BUILTIN_CONFIG_EFI="$(BR2_EXTERNAL_MASTER_PENGUIN_PATH)/board/grub-efi-builtin.cfg"
 # Without this, grub2 leaves boot.img in its build directory and never installs
 # it into the target — which is where post-build.sh has to pick it up for
 # genimage to write it into the MBR.

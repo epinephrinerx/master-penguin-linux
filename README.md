@@ -122,7 +122,7 @@ The desktop build produces two bootable artifacts:
 
 | | |
 |---|---|
-| `rootfs.iso9660` | a live CD, ~40 MB. Attach it as an optical drive and boot — nothing to convert. The root filesystem is the initramfs, so it runs in RAM and is writable. |
+| `rootfs.iso9660` | a live CD, ~42 MB, bootable under **both EFI and BIOS** firmware. Attach it as an optical drive and boot — nothing to convert. The root filesystem is the initramfs, so it runs in RAM and is writable. |
 | `disk.img` | a whole disk: MBR, GRUB, one ext4 partition. Boots on its own anywhere, but VirtualBox needs it converted to VDI first. |
 
 The ISO is the easier one:
@@ -282,6 +282,12 @@ Things that cost time, written down so they only cost it once:
 - **`mount -o remount,rw /` needs `/proc` already mounted.** BusyBox `mount` reads
   `/proc/mounts` to work out what it is remounting. Put `mount -t proc proc /proc`
   first in `rcS`, or the root silently stays read-only.
+- **Build the ISO for EFI as well as BIOS.** VirtualBox, and most hypervisors,
+  now default new Linux VMs to EFI firmware, which cannot see an El Torito BIOS
+  boot image at all — the ISO looks blank and the VM drops to a boot prompt with
+  no error worth reading. `BR2_TARGET_GRUB2_X86_64_EFI=y` alongside
+  `BR2_TARGET_GRUB2_I386_PC=y` covers both. Test on the firmware the person
+  actually has, not the one the test script sets.
 - **The ISO and the disk need separate GRUB core images.** The prefix baked into
   a core image names the device it will be read from — `(cd)` for one,
   `(hd0,msdos1)` for the other — and Buildroot builds only one. Trying to make a

@@ -225,6 +225,40 @@ else
 fi
 rm -rf "$tmp"
 
+# ----------------------------------------------------------------- network
+# R-16: hand every interface to NetworkManager.
+#
+# debootstrap leaves /etc/netplan empty, and on Ubuntu netplan is what assigns
+# interfaces to a backend. With no configuration at all nothing claims the
+# adapter: NetworkManager runs and manages nothing, systemd-networkd runs and
+# manages nothing, and the machine has no network while every service involved
+# reports itself healthy.
+#
+# Mode 0600 because netplan refuses to stay quiet about world-readable
+# configuration, and a warning on every boot trains people to ignore warnings.
+say "network"
+install -d -m 0755 /etc/netplan
+cat > /etc/netplan/01-network-manager-all.yaml <<NETPLAN
+# Let NetworkManager manage every device, wired and wireless.
+network:
+  version: 2
+  renderer: NetworkManager
+NETPLAN
+chmod 0600 /etc/netplan/01-network-manager-all.yaml
+
+# One backend, not two. systemd-networkd arrives enabled from the base install
+# and would otherwise sit alongside NetworkManager competing for the same
+# interfaces -- which works until both decide to configure one at the same
+# moment, and then fails in a way that looks like flaky hardware.
+systemctl disable systemd-networkd.service      >/dev/null 2>&1 || true
+systemctl disable systemd-networkd.socket       >/dev/null 2>&1 || true
+systemctl disable systemd-networkd-wait-online.service >/dev/null 2>&1 || true
+systemctl mask    systemd-networkd-wait-online.service >/dev/null 2>&1 || true
+
+# systemd-resolved stays: NetworkManager hands it the DNS servers it learns,
+# and /etc/resolv.conf already points at its stub.
+systemctl enable systemd-resolved.service >/dev/null 2>&1 || true
+
 # ------------------------------------------------------------ system policy
 say "system policy"
 
@@ -392,14 +426,125 @@ Categories=System;
 Keywords=install;installer;calamares;
 DESKTOP
 
-# ...and the same icon sitting on the live desktop, which is where a person
-# looks for it. casper builds the live user's home from /etc/skel.
+
+# --------------------------------------------------------------- branding
+# R-02: the boot splash, and getting Ubuntu's logo off it.
 #
-# Mode 0755 is not decoration: Thunar refuses to launch a .desktop file from the
-# desktop unless it is executable, and silently offers to open it in a text
-# editor instead.
-install -d -m 0755 /etc/skel/Desktop
-install -m 0755 /usr/share/applications/mp-install.desktop /etc/skel/Desktop/
+# The default theme is bgrt, which draws the firmware's own logo when there is
+# one and otherwise falls back to spinner. spinner's watermark.png is a symlink
+# to ubuntu-logo-text-dark.png, which is why the Ubuntu name appears on the
+# first screen of a system that is not Ubuntu.
+#
+# spinner is set directly rather than left on bgrt: bgrt shows whatever the
+# machine's firmware supplies, which is a manufacturer logo on real hardware
+# and nothing predictable in a VM. A distribution that wants its own first
+# screen cannot leave that to the firmware.
+say "boot splash"
+if [ -d /usr/share/plymouth/themes/spinner ]; then
+    MPLOGO=/usr/share/plymouth/themes/spinner/watermark.png
+    rm -f "$MPLOGO"
+    if command -v rsvg-convert >/dev/null 2>&1 && [ -f /tmp/calamares/branding/master-penguin/logo.svg ]; then
+        rsvg-convert -w 256 -h 256 \
+            /tmp/calamares/branding/master-penguin/logo.svg -o "$MPLOGO"
+    fi
+    # If the conversion could not run, leave no watermark at all rather than
+    # putting the old symlink back: a blank splash is a smaller problem than
+    # somebody else's brand on it.
+    [ -s "$MPLOGO" ] || : > "$MPLOGO"
+
+    # Blue field, matching the palette everything else uses.
+    sed -i \
+        -e 's/^BackgroundStartColor=.*/BackgroundStartColor=0x0d3c6e/' \
+        -e 's/^BackgroundEndColor=.*/BackgroundEndColor=0x1668c4/' \
+        /usr/share/plymouth/themes/spinner/spinner.plymouth 2>/dev/null || true
+
+    plymouth-set-default-theme spinner >/dev/null 2>&1 || \
+        update-alternatives --set default.plymouth \
+            /usr/share/plymouth/themes/spinner/spinner.plymouth >/dev/null 2>&1 || true
+fi
+
+# The same mark for the desktop and anything that asks the theme for a
+# distributor logo.
+install -d -m 0755 /usr/share/master-penguin
+if [ -f /tmp/calamares/branding/master-penguin/logo.svg ]; then
+    install -m 0644 /tmp/calamares/branding/master-penguin/logo.svg \
+        /usr/share/master-penguin/logo.svg
+    if command -v rsvg-convert >/dev/null 2>&1; then
+        rsvg-convert -w 256 -h 256 /usr/share/master-penguin/logo.svg \
+            -o /usr/share/master-penguin/logo.png
+        install -D -m 0644 /usr/share/master-penguin/logo.png \
+            /usr/share/icons/hicolor/256x256/apps/master-penguin.png
+        gtk-update-icon-cache -f /usr/share/icons/hicolor >/dev/null 2>&1 || true
+    fi
+fi
+
+# --------------------------------------------------------------- dock
+# R-15: the installer has to be reachable without a fight.
+#
+# A .desktop file on the desktop is the obvious place for it and the one that
+# does not work: Thunar asks whether the launcher is trusted every single time,
+# because the answer lives in per-user GIO metadata that cannot be seeded from
+# /etc/skel. Pinning it to the dock sidesteps the question entirely — plank
+# reads a plain file, and a dock item is not a file the user is being asked to
+# execute.
+say "dock"
+PLANK=/etc/skel/.config/plank/dock1
+install -d -m 0755 "$PLANK/launchers"
+
+dockitem() {
+    cat > "$PLANK/launchers/$1.dockitem" <<ITEM
+[PlankDockItemPreferences]
+Launcher=file:///usr/share/applications/$2
+ITEM
+}
+dockitem 00-install  mp-install.desktop
+dockitem 10-files    thunar.desktop
+dockitem 20-terminal xfce4-terminal.desktop
+dockitem 30-firefox  firefox.desktop
+dockitem 40-mail     thunderbird.desktop
+dockitem 50-software org.gnome.Software.desktop
+
+# Bottom, centred, magnifying — the R-03 shape.
+cat > "$PLANK/settings" <<PLANK_SETTINGS
+[PlankDockPreferences]
+CurrentWorkspaceOnly=false
+IconSize=48
+HideMode=0
+UnhideDelay=0
+HideDelay=0
+Monitor=
+DockItems=00-install.dockitem;;10-files.dockitem;;20-terminal.dockitem;;30-firefox.dockitem;;40-mail.dockitem;;50-software.dockitem
+Position=2
+Offset=0
+Theme=Transparent
+Alignment=3
+ItemsAlignment=3
+LockItems=false
+PressureReveal=false
+PinnedOnly=false
+AutoPinning=true
+ShowDockItem=false
+ZoomEnabled=true
+ZoomPercent=150
+PLANK_SETTINGS
+
+# Start it with the session, for every account rather than only the first one
+# built from /etc/skel.
+cat > /etc/xdg/autostart/plank.desktop <<AUTOSTART
+[Desktop Entry]
+Type=Application
+Name=Dock
+Exec=plank
+OnlyShowIn=XFCE;
+X-GNOME-Autostart-enabled=true
+NoDisplay=true
+AUTOSTART
+
+# ...and take the broken icon off the desktop. It was never going to work, and
+# a launcher that asks for permission on every click is worse than one that is
+# simply somewhere else.
+rm -f /etc/skel/Desktop/mp-install.desktop
+rmdir /etc/skel/Desktop 2>/dev/null || true
 
 # -------------------------------------------------------------------- tidy up
 say "cleaning up"

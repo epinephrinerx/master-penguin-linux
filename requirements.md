@@ -731,6 +731,195 @@ Notes
     for is real — Thunar does check that metadata. It is still the wrong fix
     here, because the metadata is per-user.
 
+### R-16 — the network has to work
+
+Status:   OPEN
+Reported: "ทดสอบคร่าวๆ ยังไม่สามารถเชื่อมต่อกับ network adaptor ได้ครับ"
+Area:     ubuntu track — `scripts/inside-chroot.sh`
+
+Problem
+    No network. The adapter is present and NetworkManager is installed,
+    enabled and running — it simply is not managing anything.
+
+    `/etc/netplan/` is empty. On Ubuntu, netplan is what assigns interfaces to
+    a backend; with no configuration at all, nothing is handed to
+    NetworkManager and nothing is handed to systemd-networkd either, so the
+    interface sits there unclaimed. Ubuntu images ship a one-line file that
+    does this and it was never created, because debootstrap does not and
+    nothing in this build did it afterwards.
+
+    This is worse than it first looks. Without a network:
+      - the optional package groups from R-04 cannot be fetched, so the
+        installer silently offers choices it cannot honour
+      - updates (R-07) never appear
+      - the welcome page requirement check reports no internet, which is
+        correct and looks like the machine is offline rather than misbuilt
+
+Requirement
+    1. A wired connection comes up by itself, in the live session and after
+       installing, with no configuration by hand.
+    2. Wi-Fi appears in the network menu on hardware that has it.
+    3. One backend manages the interfaces, not two arguing over them.
+
+Verification
+    Boot the ISO in a VM with NAT networking: `ip addr` shows an address,
+    `ping -c1 archive.ubuntu.com` succeeds, and the panel shows a connection.
+    Then install, reboot, and check the same three things on the installed
+    system.
+
+Notes
+    The fix is `/etc/netplan/01-network-manager-all.yaml` with
+    `renderer: NetworkManager`, at mode 0600 — netplan warns about
+    world-readable configuration and will keep warning until it is fixed.
+
+    Worth checking at the same time that systemd-networkd is not also enabled
+    and trying to claim the same interface. Both running is a configuration
+    that works until it does not, and then does so intermittently.
+
+### R-17 — the stated minimum disk size has to be the real one
+
+Status:   OPEN
+Reported: "การติดตั้งขึ้นพื้นที่ไม่พอครับ ผมต้องปรับพื้นที่ก่อนครับ"
+Area:     ubuntu track — `calamares/modules/welcome.conf`, partitioning
+
+Problem
+    The installer refuses to proceed for want of space. The welcome page says
+    15 GB is enough, and 15 GB is not enough, which is the worse half of the
+    problem: a number that is wrong in the optimistic direction sends people
+    away to resize a disk and come back to the same refusal.
+
+    Where 15 came from: roughly the unpacked system, and nothing else. What
+    actually has to fit:
+
+    | | |
+    |---|---|
+    | unpacked system | about 5 GB |
+    | swap file (R-13) | equal to RAM, up to 8 GB |
+    | EFI system partition | 512 MB |
+    | somewhere to put files | not nothing |
+
+    On a machine with 16 GB of RAM the swap file alone is 8 GB, so the true
+    floor is over 15 before the person has saved a single document. The two
+    requirements were written separately and never added up.
+
+Requirement
+    1. The minimum the installer states is one an install actually fits in,
+       including the swap file, on a machine with a lot of RAM.
+    2. If the disk is too small, say so with the number that is needed and the
+       number that is there — not "not enough space".
+    3. The figure is derived from the parts, not guessed, and the derivation
+       is written down where the number is set.
+
+Verification
+    Install on a disk exactly at the stated minimum, on a VM with 16 GB of RAM
+    so the swap file is at its cap. It completes, boots, and has free space.
+    Then try one gigabyte under it and confirm the refusal names both numbers.
+
+Notes
+    Worth reconsidering the swap cap at the same time. 8 GB of swap on a
+    16 GB machine is defensible on a desktop with a large disk and absurd on a
+    32 GB SSD in a small laptop. Sizing swap against the disk as well as
+    against RAM would keep both honest.
+
+### R-18 — shutting down has to finish
+
+Status:   OPEN
+Reported: "ส่วนตอน shutdown เครื่องไม่ปิดครับ"
+Area:     ubuntu track — `grub/grub.cfg`, casper
+
+Problem
+    Shutting down does not complete; the machine sits there instead of
+    powering off.
+
+    An earlier boot log shows where it is likely stuck:
+
+        [FAILED] Failed unmounting cdrom.mount - /cdrom.
+        Starting casper.service - Shuts down the "live" preinstalled system...
+
+    casper ejects the medium on shutdown and then waits for somebody to press
+    Enter to confirm they have removed it. In a virtual machine nobody is going
+    to, and on a serial console the prompt may not even be visible, so it waits
+    indefinitely and looks like a hang.
+
+Requirement
+    1. Shutting down the live session powers the machine off without anyone
+       having to press anything.
+    2. On real hardware, whatever tells a person to take the USB stick out is
+       still worth keeping — it stops a machine booting the installer again.
+       A prompt nobody sees is not that; a message that does not block is.
+    3. The installed system, which has no medium to eject, shuts down
+       cleanly too. Worth checking separately: it is a different path.
+
+Verification
+    Over the serial console, log in and run `poweroff`. QEMU exits by itself
+    within a reasonable time. Repeat on the installed system.
+
+Notes
+    casper takes `noprompt` on the kernel command line, which skips the wait.
+    The trade-off is point 2, and it is a real one rather than a formality:
+    a machine left with the stick in reboots into the installer, and somebody
+    who has just installed an operating system does not necessarily expect
+    that.
+
+### R-19 — the installer has to be able to install
+
+Status:   OPEN
+Reported: screenshot — "Failed to unpack image /cdrom/casper/filesystem.squashfs"
+          / "rsync failed with error code 127"
+Area:     ubuntu track — `config/packages-base.list`
+
+Problem
+    Installation fails at the point where the system is copied onto the disk.
+    Exit code 127 is the shell saying the command does not exist: `rsync` is
+    not installed, and Calamares copies the unpacked squashfs with it.
+
+    The same check turned up `lvm2` and `kpartx` missing, which the
+    partitioning module reaches for on some layouts.
+
+    This got as far as a person trying it because none of the earlier
+    verification installed anything. Booting the live session proves the disc
+    works; it says nothing at all about whether the installer does.
+
+Requirement
+    1. An install completes from the ISO with no network, onto an empty disk.
+    2. Everything Calamares shells out to is present on the disc: rsync,
+       lvm2, kpartx, cryptsetup, the filesystem tools.
+    3. A completed install boots without the disc.
+
+Verification
+    Install to a virtual disk and boot the result. Not a screenshot of the
+    live session — the actual install, the actual reboot.
+
+### R-20 — the software selection page has to show the software
+
+Status:   OPEN
+Reported: screenshot — the desktop chooser is empty, headings and nothing else
+Area:     ubuntu track — `calamares/netinstall-desktops.yaml`
+
+Problem
+    The page from R-04 draws its two column headings and no rows. The file it
+    reads is present, valid YAML, and describes three groups.
+
+    Calamares 3.3 expects the list under a top-level `groups` key. A bare list
+    is the 3.2 format. 3.3 reads the file, does not find `groups`, and shows an
+    empty page rather than an error — so it looks like a missing file instead
+    of a misshapen one.
+
+Requirement
+    1. Every group and subgroup is listed, with its description and size.
+    2. The Thai text appears when the installer is running in Thai.
+    3. Ticking a group installs it; ticking none still gives a working system.
+
+Verification
+    Screenshot the page: three groups, ten subgroups, sizes visible. Then
+    complete an install with one optional group ticked and confirm it is
+    present afterwards.
+
+Notes
+    Whether 3.3 honours `name[th]` for these strings is still unproven. If the
+    page comes up in English once the groups appear, that is the next thing to
+    look at, and it is a smaller problem than an empty page.
+
 ---
 
 ## Deferred

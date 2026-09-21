@@ -13,6 +13,16 @@ source ./config/build.conf
 [ "$(id -u)" -eq 0 ] || { echo "needs root" >&2; exit 1; }
 [ -x "$MP_CHROOT/bin/true" ] || { echo "no chroot at $MP_CHROOT — run 10-bootstrap.sh first" >&2; exit 1; }
 
+# Refuse to start if another build is already inside this chroot. Two runs
+# mounting over each other is how /dev, /proc and /sys end up bound into a
+# directory that a later "rm -rf" then follows out onto the host.
+if mount | grep -qF "$MP_CHROOT"; then
+    echo "something is already mounted under $MP_CHROOT -- another build?" >&2
+    mount | grep -F "$MP_CHROOT" | awk "{print \"  \" \$3}" >&2
+    echo "unmount those before starting again" >&2
+    exit 1
+fi
+
 MOUNTED=""
 cleanup() {
     local d

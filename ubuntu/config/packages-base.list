@@ -67,6 +67,17 @@ rfkill
 iw
 wpasupplicant
 
+# --- what the installer itself runs (R-19) --------------------------------
+# Calamares shells out to these. Missing rsync is not a degraded install, it
+# is an install that stops at "rsync failed with error code 127" -- 127 being
+# the shell saying the command does not exist.
+rsync
+lvm2
+kpartx
+cryptsetup
+cryptsetup-initramfs
+squashfs-tools
+
 # --- bootloaders (R-06) ---------------------------------------------------
 # Both firmwares, because the installer has to put down whichever one the
 # machine it lands on actually boots. Only grub-pc was here before, pulled in
@@ -96,6 +107,9 @@ ufw
 gufw
 
 # --- boot splash (R-02) ---------------------------------------------------
+# rsvg-convert turns the project logo into the PNG plymouth and the icon
+# theme want, so there is one drawing of the bird rather than several.
+librsvg2-bin
 plymouth
 plymouth-themes
 plymouth-label

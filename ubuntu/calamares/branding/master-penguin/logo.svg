@@ -1,13 +1,25 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" width="160" height="160">
-  <circle cx="80" cy="80" r="76" fill="#101828"/>
-  <ellipse cx="80" cy="92" rx="40" ry="50" fill="#f2f4f7"/>
-  <ellipse cx="80" cy="60" rx="34" ry="36" fill="#1d2939"/>
-  <ellipse cx="80" cy="74" rx="24" ry="26" fill="#f2f4f7"/>
-  <circle cx="68" cy="56" r="5" fill="#101828"/>
-  <circle cx="92" cy="56" r="5" fill="#101828"/>
-  <path d="M80 66 l-9 7 9 7 9-7z" fill="#f9a825"/>
-  <path d="M46 96 q-14 26 4 38 q10 4 14-6z" fill="#1d2939"/>
-  <path d="M114 96 q14 26 -4 38 q-10 4 -14-6z" fill="#1d2939"/>
-  <ellipse cx="66" cy="140" rx="16" ry="7" fill="#f9a825"/>
-  <ellipse cx="94" cy="140" rx="16" ry="7" fill="#f9a825"/>
+  <!-- A pale disc behind the bird, so the mark reads on the blue sidebar, on
+       the blue boot splash, and on whatever a file manager puts behind an
+       icon. The previous version was dark navy on a near-black panel. -->
+  <circle cx="80" cy="80" r="76" fill="#f4f8fd"/>
+  <circle cx="80" cy="80" r="76" fill="none" stroke="#1668c4" stroke-width="4"/>
+
+  <ellipse cx="80" cy="94" rx="40" ry="48" fill="#0d3c6e"/>
+  <ellipse cx="80" cy="100" rx="27" ry="38" fill="#ffffff"/>
+  <ellipse cx="80" cy="58" rx="33" ry="34" fill="#0d3c6e"/>
+  <ellipse cx="80" cy="66" rx="23" ry="25" fill="#ffffff"/>
+
+  <circle cx="69" cy="56" r="5" fill="#0d3c6e"/>
+  <circle cx="91" cy="56" r="5" fill="#0d3c6e"/>
+  <circle cx="70.5" cy="54.5" r="1.8" fill="#ffffff"/>
+  <circle cx="92.5" cy="54.5" r="1.8" fill="#ffffff"/>
+
+  <path d="M80 68 l-9 7 9 7 9-7z" fill="#f9a825"/>
+
+  <path d="M42 92 q-13 26 5 39 q9 3 12-7z" fill="#0d3c6e"/>
+  <path d="M118 92 q13 26 -5 39 q-9 3 -12-7z" fill="#0d3c6e"/>
+
+  <ellipse cx="66" cy="140" rx="15" ry="6.5" fill="#f9a825"/>
+  <ellipse cx="94" cy="140" rx="15" ry="6.5" fill="#f9a825"/>
 </svg>

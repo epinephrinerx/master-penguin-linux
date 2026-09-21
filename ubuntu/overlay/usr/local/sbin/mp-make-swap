@@ -37,6 +37,23 @@ ram_gb=$(( (ram_mb + 512) / 1024 ))
 
 swap_gb=$ram_gb
 [ "$swap_gb" -gt 8 ] && swap_gb=8
+
+# R-17: and never more than a quarter of the filesystem it lives in.
+#
+# The RAM rule on its own is what made the installer ask for more disk than
+# it admitted to: on a machine with plenty of memory and a small disk it
+# wanted 8 GB of swap out of 20. Swap that large is no use on a disk that
+# small, and the space is worth more as space.
+root_kb=$(df -k --output=size / | tail -1 | tr -d " ")
+if [ -n "$root_kb" ] && [ "$root_kb" -gt 0 ]; then
+    quarter_gb=$(( root_kb / 1024 / 1024 / 4 ))
+    if [ "$quarter_gb" -lt "$swap_gb" ]; then
+        echo "mp-make-swap: capping swap at a quarter of the disk (${quarter_gb} GB)"
+        swap_gb=$quarter_gb
+    fi
+fi
+
+# ...but never below 2 GB, whatever the arithmetic said.
 [ "$swap_gb" -lt 2 ] && swap_gb=2
 
 echo "mp-make-swap: ${ram_gb} GB of RAM, creating a ${swap_gb} GB swap file"

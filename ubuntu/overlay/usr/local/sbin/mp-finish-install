@@ -48,6 +48,23 @@ EndSection
 XORGKB
 log "keyboard layouts set to us,th"
 
+# --------------------------------------------------------------- R-16
+# Calamares writes its own netplan file for the installed system, and on a
+# machine that had no network during the install it may write nothing at all.
+# Make sure NetworkManager is the renderer either way.
+install -d -m 0755 /etc/netplan
+if ! grep -rqs "renderer: *NetworkManager" /etc/netplan/; then
+    cat > /etc/netplan/01-network-manager-all.yaml <<NETPLAN
+network:
+  version: 2
+  renderer: NetworkManager
+NETPLAN
+    chmod 0600 /etc/netplan/01-network-manager-all.yaml
+    log "netplan set to NetworkManager"
+fi
+systemctl disable systemd-networkd.service >/dev/null 2>&1
+systemctl mask systemd-networkd-wait-online.service >/dev/null 2>&1
+
 # --------------------------------------------------------------- R-13
 [ -x /usr/local/sbin/mp-make-swap ] && /usr/local/sbin/mp-make-swap
 

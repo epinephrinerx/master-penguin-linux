@@ -32,8 +32,20 @@ images:
 slideshow:               "show.qml"
 slideshowAPI: 2
 
+# The R-02 palette.
+#
+# This was #101828 behind #f2f4f7 text, which should have been legible and was
+# not: the step names on the sidebar could not be read at all. Only the
+# selected one showed, because it sits on a light strip drawn by the widget
+# rather than by these colours.
+#
+# Both spellings of the selected-row key are set. Calamares renamed
+# sidebarTextHighlight to sidebarBackgroundSelected somewhere along the way,
+# and which one a given build honours is not worth discovering from a
+# screenshot — the unrecognised one is ignored, and setting both costs a line.
 style:
-   sidebarBackground:    "#101828"
-   sidebarText:          "#f2f4f7"
-   sidebarTextSelect:    "#101828"
-   sidebarTextHighlight: "#7cc4f8"
+    sidebarBackground:         "#1668c4"
+    sidebarText:               "#ffffff"
+    sidebarTextSelect:         "#0d3c6e"
+    sidebarBackgroundSelected: "#f4f8fd"
+    sidebarTextHighlight:      "#f4f8fd"

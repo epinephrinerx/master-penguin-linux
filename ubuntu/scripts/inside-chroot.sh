@@ -397,10 +397,19 @@ LIGHTDM
 say "installing the installer"
 rm -rf /etc/calamares
 install -d -m 0755 /etc/calamares
-cp -a /tmp/calamares/settings.conf          /etc/calamares/
-cp -a /tmp/calamares/modules                /etc/calamares/
-cp -a /tmp/calamares/branding               /etc/calamares/
-cp -a /tmp/calamares/netinstall-desktops.yaml /etc/calamares/
+# cp -r, not cp -a. The source of these files is a working tree on an NTFS
+# volume mounted into WSL, where every file reads back as 0777 and owned by
+# the build user -- and cp -a faithfully carried that into the image. The
+# result was a world-writable /etc/calamares/settings.conf on a disc whose
+# desktop launcher runs "pkexec calamares": any account on the live session
+# could rewrite what the installer executes as root. Ownership and modes are
+# set here instead of inherited from the host filesystem.
+cp -r /tmp/calamares/settings.conf /etc/calamares/
+cp -r /tmp/calamares/modules       /etc/calamares/
+cp -r /tmp/calamares/branding      /etc/calamares/
+chown -R root:root /etc/calamares
+find /etc/calamares -type d -exec chmod 0755 {} +
+find /etc/calamares -type f -exec chmod 0644 {} +
 
 # Scripts the installer calls in the target system: mp-make-swap (R-13) and
 # mp-finish-install, which undoes the live-session settings and applies the
@@ -540,11 +549,22 @@ X-GNOME-Autostart-enabled=true
 NoDisplay=true
 AUTOSTART
 
-# ...and take the broken icon off the desktop. It was never going to work, and
-# a launcher that asks for permission on every click is worse than one that is
-# simply somewhere else.
-rm -f /etc/skel/Desktop/mp-install.desktop
-rmdir /etc/skel/Desktop 2>/dev/null || true
+# ...and put the icon back on the desktop as well, because taking it away
+# left a live disc with no visible way to start the installer at all.
+#
+# It was removed on the theory that the "this launcher is untrusted" prompt
+# came from per-user GIO metadata that /etc/skel cannot seed. That is Thunar's
+# behaviour for files in a window; the desktop is drawn by xfdesktop, which
+# decides the same question differently -- it runs a .desktop file without
+# asking if, and only if, the file is executable. It was mode 0644, so it
+# asked. Every Ubuntu live disc ships its installer launcher 0755 for this
+# reason.
+install -d -m 0755 /etc/skel/Desktop
+install -m 0755 /usr/share/applications/mp-install.desktop     /etc/skel/Desktop/mp-install.desktop
+
+# And a third way in, for when a session has neither a dock nor desktop icons:
+# the applications menu, under System.
+update-desktop-database /usr/share/applications >/dev/null 2>&1 || true
 
 # -------------------------------------------------------------------- tidy up
 say "cleaning up"

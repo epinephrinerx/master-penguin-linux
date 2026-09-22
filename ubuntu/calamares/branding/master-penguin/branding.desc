@@ -34,18 +34,26 @@ slideshowAPI: 2
 
 # The R-02 palette.
 #
-# This was #101828 behind #f2f4f7 text, which should have been legible and was
-# not: the step names on the sidebar could not be read at all. Only the
-# selected one showed, because it sits on a light strip drawn by the widget
-# rather than by these colours.
+# The key names here are not a style choice. The previous version used
+# sidebarBackground / sidebarText / sidebarTextSelect / sidebarBackgroundSelected,
+# which are the names from Calamares 3.2 and from most of the documentation
+# still in circulation. None of them exist in the 3.3.14 build on this disc:
 #
-# Both spellings of the selected-row key are set. Calamares renamed
-# sidebarTextHighlight to sidebarBackgroundSelected somewhere along the way,
-# and which one a given build honours is not worth discovering from a
-# screenshot — the unrecognised one is ignored, and setting both costs a line.
+#   $ grep -c sidebarBackground libcalamaresui.so.3.3.14   -> 0
+#   $ strings libcalamaresui.so.3.3.14 | grep -E "^Sidebar"
+#     SidebarBackground
+#     SidebarText
+#     SidebarTextCurrent
+#     SidebarBackgroundCurrent
+#
+# Unrecognised keys are ignored rather than reported, so the whole block was
+# silently dropped and the sidebar kept the default near-black -- step names
+# in dark grey on dark grey, which is what could not be read.
+#
+# "Current" is this build's word for the step being shown. In 3.2 it was
+# "Select".
 style:
-    sidebarBackground:         "#1668c4"
-    sidebarText:               "#ffffff"
-    sidebarTextSelect:         "#0d3c6e"
-    sidebarBackgroundSelected: "#f4f8fd"
-    sidebarTextHighlight:      "#f4f8fd"
+    SidebarBackground:        "#1668c4"
+    SidebarText:              "#ffffff"
+    SidebarBackgroundCurrent: "#f4f8fd"
+    SidebarTextCurrent:       "#0d3c6e"

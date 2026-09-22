@@ -122,6 +122,28 @@ Notes
     as greeter text. Worth settling before the work, because it touches five
     places.
 
+    **Update 2026-09-22.** The sidebar was still near-black, and the step
+    names on it still could not be read. The palette was right and the key
+    names were wrong. branding.desc used `sidebarBackground`, `sidebarText`,
+    `sidebarTextSelect` and `sidebarBackgroundSelected` — the Calamares 3.2
+    names, which is what almost all the documentation in circulation still
+    shows. The build on this disc is 3.3.14 and knows none of them:
+
+        $ grep -c sidebarBackground libcalamaresui.so.3.3.14   -> 0
+        $ strings libcalamaresui.so.3.3.14 | grep -E "^Sidebar"
+          SidebarBackground
+          SidebarText
+          SidebarTextCurrent
+          SidebarBackgroundCurrent
+
+    Unknown style keys are ignored without a message, so the entire block did
+    nothing. Now written with the four names this build actually reads.
+
+    The slideshow had the same shape of fault for a different reason: its text
+    was `#f2f4f7`, near-white, on the white panel Calamares draws behind it.
+    It now sets its own background and its own colours rather than inheriting
+    either.
+
 ### R-03 — the installed desktop should look as close to macOS as XFCE allows
 
 Status:   OPEN
@@ -731,6 +753,22 @@ Notes
     for is real — Thunar does check that metadata. It is still the wrong fix
     here, because the metadata is per-user.
 
+    **Update 2026-09-22.** Reported again, worse: *"ไม่มีไอคอนให้ติดตั้ง
+    Linux ขึ้นมาครับ"* — there was no icon to start the installer at all.
+
+    The desktop icon was removed on the reasoning that the "untrusted
+    launcher" prompt came from per-user GIO metadata that /etc/skel cannot
+    seed. That is true of Thunar, which draws folder windows. It is not true
+    of xfdesktop, which draws the desktop, and which runs a .desktop file
+    without asking if and only if the file is executable. It was mode 0644.
+    Ubuntu's own live discs ship their installer launcher 0755 for exactly
+    this reason.
+
+    So the diagnosis was wrong and the fix removed the only thing that was
+    working. The icon is back at mode 0755, the dock item stays, and the
+    applications menu entry stays — three ways in, so this cannot come down
+    to any one of them behaving unexpectedly.
+
 ### R-16 — the network has to work
 
 Status:   OPEN
@@ -921,6 +959,91 @@ Notes
     look at, and it is a smaller problem than an empty page.
 
 ---
+
+    **Update 2026-09-22.** Still not shown — reported as *"ยังไม่มีตัวเลือก
+    Desktop environment"*. Moving the list under a top-level `groups:` key was
+    necessary and not sufficient: the key that points *at* the file does not
+    exist in this build either.
+
+        $ grep -c groupsFilePath libcalamares_viewmodule_netinstall.so  -> 0
+        $ grep -c groupsUrl      libcalamares_viewmodule_netinstall.so  -> 0
+        $ grep -c groups         libcalamares_viewmodule_netinstall.so  -> 1
+
+    3.3.14 takes a single key, `groups`, holding either the list itself or a
+    URL to fetch one from. `groupsFilePath` was a 3.2 spelling and was being
+    ignored, so the module had no groups at all.
+
+    The list is now written directly into netinstall.conf rather than loaded
+    from netinstall-desktops.yaml, which has been deleted. There is nothing to
+    find, nothing to fetch and nothing to time out, so the page can no longer
+    fail for a reason unrelated to the page.
+
+### R-21 — the target system has to be mounted properly before anything runs in it
+
+Status:   WIP
+Reported: "ภาพที่สองคือ error ที่ระบบตอบกลับมาตอนติดตั้งไม่ผ่านครับ"
+Area:     ubuntu/calamares/modules/mount.conf (new)
+
+Problem
+    The install runs to about 25%, unpacks the filesystem, and then stops with
+    a dialog:
+
+        Command update-initramfs finished with exit code 1.
+        update-initramfs: Generating /boot/initrd.img-7.0.0-31-generic
+        /usr/sbin/mkinitramfs: 195: cannot create /dev/null: Permission denied
+        W: No zstd in /usr/bin:/sbin:/bin, using gzip
+        /usr/sbin/mkinitramfs: 412: cannot create /dev/null: Permission denied
+        E: no ldd around - install libc-bin
+        update-initramfs: failed for /boot/initrd.img-7.0.0-31-generic with 1.
+
+    Three of those four lines are misdirection. libc-bin is installed and
+    /usr/bin/ldd is in the image; zstd is installed and /usr/bin/zstd is in
+    the image. Both are found by scripts that test with
+
+        command -v ldd >/dev/null
+
+    and when the redirect to /dev/null cannot be opened the test fails, so the
+    tool is reported missing. There is exactly one fault: the target has no
+    /dev.
+
+    Calamares mounts the root filesystem and then mounts whatever
+    mount.conf lists. There was no mount.conf. The module does not carry a
+    default list and says so itself:
+
+        extra_mounts = libcalamares.job.configuration.get("extraMounts") or []
+        if not extra_mounts:
+            warning("No extra mounts defined. Does mount.conf exist?")
+                        -- usr/lib/x86_64-linux-gnu/calamares/modules/mount/main.py
+
+    So every step that runs inside the target — update-initramfs, grub-probe,
+    efibootmgr, and apt for anything picked on the software page — was running
+    in a chroot with no /dev, no /proc and no /sys. update-initramfs is simply
+    the first one to be reached.
+
+Requirement
+    1. mount.conf exists and mounts /proc, /sys, /dev, /run and /run/udev
+       into the target.
+    2. /dev is bound recursively, so /dev/pts and /dev/shm come with it —
+       debconf and apt need a pty in the target.
+    3. efivarfs is mounted at /sys/firmware/efi/efivars on EFI machines and
+       not on BIOS ones. Without it efibootmgr writes the bootloader to disk
+       and then cannot register it, which produces an install that reports
+       success and boots to nothing. This is the same fault R-06 is about.
+    4. update-initramfs finishes, and the generated initrd is zstd, not the
+       gzip fallback — that is the check that /dev really is there rather
+       than merely present.
+
+Verification
+    An install to a blank virtual disk that reaches the "installation
+    finished" page. Then, on the installed system:
+      - `/boot/initrd.img-*` exists,
+      - `file` reports it as Zstandard, not gzip,
+      - on EFI, `efibootmgr` lists a "Master Penguin" entry.
+
+Notes
+    This is why R-19 never got past its first point, and why nothing in R-06,
+    R-12, R-13 or R-15's third point has been verifiable: no install has ever
+    completed, so there has never been an installed system to look at.
 
 ## Deferred
 

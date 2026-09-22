@@ -527,6 +527,69 @@ if [ -f /tmp/calamares/branding/master-penguin/logo.svg ]; then
     fi
 fi
 
+# ------------------------------------------------------------- wallpaper
+# R-02: the desktop itself was black.
+#
+# xfdesktop takes its default from a short list of files compiled into the
+# binary:
+#
+#     $ strings /usr/bin/xfdesktop | grep backgrounds
+#     /usr/share/xfce4/backdrops/xubuntu-wallpaper.png
+#     /usr/share/backgrounds/xfce/xfce-stripes.png
+#     /usr/share/backgrounds/xfce/xfce-teal.png
+#     /usr/share/backgrounds/xfce/xfce-verticals.png
+#
+# None of them exist here. The first is Xubuntu's and this is not Xubuntu;
+# the other three are shipped as .svg, not .png. Nothing matched, and a
+# desktop with no backdrop is black.
+#
+# The file is written under this project's own name and the name xfdesktop
+# looks for is a symlink to it, so the asset is ours and the lookup still
+# finds it without having to guess a monitor name.
+say "wallpaper"
+if [ -f /tmp/calamares/branding/master-penguin/wallpaper.svg ]; then
+    install -d -m 0755 /usr/share/backgrounds/master-penguin /usr/share/xfce4/backdrops
+    install -m 0644 /tmp/calamares/branding/master-penguin/wallpaper.svg         /usr/share/backgrounds/master-penguin/mp-wallpaper.svg
+    if command -v rsvg-convert >/dev/null 2>&1; then
+        rsvg-convert -w 1920 -h 1080             /usr/share/backgrounds/master-penguin/mp-wallpaper.svg             -o /usr/share/backgrounds/master-penguin/mp-wallpaper.png
+        ln -sf /usr/share/backgrounds/master-penguin/mp-wallpaper.png             /usr/share/xfce4/backdrops/xubuntu-wallpaper.png
+    fi
+fi
+
+# ...and say it explicitly as well, for the monitor names a virtual machine
+# and a laptop are each likely to report. A property for a monitor that is
+# not present is simply never read, so listing several costs nothing; the
+# solid colour underneath is the deep blue rather than black, so even a
+# machine whose monitor is named something not listed here comes up in the
+# right colour instead of the wrong one.
+XFCONF=/etc/xdg/xfce4/xfconf/xfce-perchannel-xml
+install -d -m 0755 "$XFCONF"
+{
+    echo '<?xml version="1.0" encoding="UTF-8"?>'
+    echo '<channel name="xfce4-desktop" version="1.0">'
+    echo '  <property name="backdrop" type="empty">'
+    echo '    <property name="screen0" type="empty">'
+    for m in monitorVirtual-1 monitorVirtual1 monitorVGA-1 monitoreDP-1              monitorHDMI-1 monitorDP-1 monitorLVDS-1 monitor0; do
+        echo "      <property name=\"$m\" type=\"empty\">"
+        echo '        <property name="workspace0" type="empty">'
+        echo '          <property name="color-style" type="int" value="0"/>'
+        echo '          <property name="rgba1" type="array">'
+        echo '            <value type="double" value="0.050980"/>'
+        echo '            <value type="double" value="0.235294"/>'
+        echo '            <value type="double" value="0.431373"/>'
+        echo '            <value type="double" value="1.000000"/>'
+        echo '          </property>'
+        echo '          <property name="image-style" type="int" value="5"/>'
+        echo '          <property name="last-image" type="string" value="/usr/share/backgrounds/master-penguin/mp-wallpaper.png"/>'
+        echo '        </property>'
+        echo '      </property>'
+    done
+    echo '    </property>'
+    echo '  </property>'
+    echo '</channel>'
+} > "$XFCONF/xfce4-desktop.xml"
+chmod 0644 "$XFCONF/xfce4-desktop.xml"
+
 # --------------------------------------------------------------- dock
 # R-15: the installer has to be reachable without a fight.
 #

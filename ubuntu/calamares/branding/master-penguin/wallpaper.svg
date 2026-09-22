@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The desktop background. R-02 asks for blue and white from the first thing
+     on screen to the last, and the desktop was black: this xfdesktop build
+     looks for /usr/share/xfce4/backdrops/xubuntu-wallpaper.png first and then
+     three files in /usr/share/backgrounds/xfce/ that are shipped only as SVG,
+     so nothing matched and it fell back to a flat black.
+
+     Drawn rather than photographed so it scales to any panel without a second
+     asset, and kept quiet enough that white icon labels stay readable on it. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" width="1920" height="1080">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0.35" y2="1">
+      <stop offset="0%"   stop-color="#0a2f58"/>
+      <stop offset="55%"  stop-color="#0d3c6e"/>
+      <stop offset="100%" stop-color="#1668c4"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.72" cy="0.22" r="0.65">
+      <stop offset="0%"   stop-color="#6cb2f0" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#6cb2f0" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1920" height="1080" fill="url(#sky)"/>
+  <rect width="1920" height="1080" fill="url(#glow)"/>
+
+  <!-- Three long arcs, the same idea as the mark's disc. Low contrast on
+       purpose: a desktop is a background, not a poster. -->
+  <g fill="none" stroke="#f4f8fd" stroke-linecap="round">
+    <path d="M -200 980 Q 620 520 2120 760" stroke-width="2" opacity="0.14"/>
+    <path d="M -200 1060 Q 700 640 2120 880" stroke-width="3" opacity="0.10"/>
+    <path d="M -200 880  Q 540 420 2120 620" stroke-width="1.5" opacity="0.08"/>
+  </g>
+
+  <!-- The mark, large and nearly invisible, bottom right. -->
+  <g transform="translate(1430 560) scale(3.2)" opacity="0.07">
+    <ellipse cx="80" cy="94" rx="40" ry="48" fill="#ffffff"/>
+    <ellipse cx="80" cy="58" rx="33" ry="34" fill="#ffffff"/>
+    <path d="M42 92 q-13 26 5 39 q9 3 12-7z" fill="#ffffff"/>
+    <path d="M118 92 q13 26 -5 39 q-9 3 -12-7z" fill="#ffffff"/>
+    <ellipse cx="66" cy="140" rx="15" ry="6.5" fill="#ffffff"/>
+    <ellipse cx="94" cy="140" rx="15" ry="6.5" fill="#ffffff"/>
+  </g>
+</svg>

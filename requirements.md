@@ -978,6 +978,25 @@ Notes
     find, nothing to fetch and nothing to time out, so the page can no longer
     fail for a reason unrelated to the page.
 
+    **Sizes corrected 2026-09-22.** Rule 2 of that file says every group
+    states what it costs. The figures were guesses and were wrong by between
+    four and thirty times, in both directions. Measured with
+    `apt-get install -s` against the built chroot, summing the Size field of
+    everything apt said it would fetch:
+
+        group          was        is
+        GNOME          1.2 GB     10 MB    (already on the disc -- R-22)
+        KDE Plasma     900 MB     330 MB
+        Office         700 MB     290 MB
+        Graphics       550 MB     70 MB
+        Development    400 MB     75 MB
+        Backup         50 MB      5 MB
+        Remote access  80 MB      2 MB
+
+    All 24 packages named on the page were also checked for an install
+    candidate with `apt-cache policy` -- the method that catches a package
+    with no candidate, which `apt-cache show` does not.
+
 ### R-21 — the target system has to be mounted properly before anything runs in it
 
 Status:   WIP
@@ -1044,6 +1063,76 @@ Notes
     This is why R-19 never got past its first point, and why nothing in R-06,
     R-12, R-13 or R-15's third point has been verifiable: no install has ever
     completed, so there has never been an installed system to look at.
+
+### R-22 — the desktop on the disc has to be the desktop that runs
+
+Status:   WIP
+Reported: Found while checking R-15 in a VM, not reported directly.
+Area:     ubuntu/scripts/inside-chroot.sh
+
+Problem
+    The live disc boots into GNOME. Not XFCE with GNOME pieces attached --
+    GNOME:
+
+        $ echo $XDG_CURRENT_DESKTOP
+        ubuntu:GNOME
+        $ ps -e -o comm= | grep -E "shell|session"
+        gdm-session-worker
+        gnome-session-binary
+        gnome-shell
+
+    XFCE is installed and configured and has never run. Everything aimed at
+    it has been inert from the first ISO: the panel layout, the plank dock
+    seeded into /etc/skel, the launcher permissions R-15 turned on, and the
+    whole of R-03. The dock down the left of the screen is GNOME's. The
+    "untrusted launcher" badge on the installer icon is GNOME's, which is why
+    making the file executable changed nothing -- xfdesktop, which that rule
+    is about, was not running.
+
+    How it gets there: update-manager, update-notifier and
+    network-manager-gnome each have a dependency written as an alternation
+    beginning with gnome-shell --
+
+        Depends: gnome-shell | notification-daemon
+        Depends: gnome-shell | policykit-1-gnome | polkit-kde-agent-1 | ...
+
+    -- and apt takes the first alternative when none is installed yet.
+    gnome-shell pulls ubuntu-session, which pulls gdm3. gdm3's postinst then
+    writes /etc/X11/default-display-manager and claims the
+    display-manager.service symlink. The build's `systemctl enable lightdm`
+    does not take either back: enable creates that symlink only when nothing
+    already owns it, so it succeeded and changed nothing.
+
+Requirement
+    1. The live session is XFCE, under LightDM.
+    2. gdm3 is not on the disc. Purged, not disabled -- an installed gdm3
+       keeps a postinst that can reclaim the symlink on any later upgrade.
+    3. Nothing else is lost to the purge. Checked before doing it:
+
+           apt-get purge -s gdm3        -> 1 package
+           apt-get purge -s gnome-shell -> 10, including update-manager and
+                                           network-manager-gnome
+
+       so gnome-shell stays. It is dead weight on a disc whose session is
+       XFCE, and it is still cheaper than losing the update UI (R-07) and
+       the network applet (R-16).
+
+Verification
+    On the live disc: `echo $XDG_CURRENT_DESKTOP` says XFCE, `pgrep xfdesktop`
+    and `pgrep plank` both return a pid, and the installer icon on the desktop
+    runs on the first double-click.
+
+Notes
+    This also makes the GNOME option on the software page nearly free, since
+    gnome-shell is already there -- which is how the sizes on that page came
+    to be re-measured (R-20).
+
+    Left open deliberately: gnome-shell and its ~60 dependent packages are
+    still on the disc. They could be removed by installing the *later*
+    alternatives (notification-daemon, policykit-1-gnome) before the packages
+    that would otherwise pull gnome-shell in, so apt finds the alternation
+    already satisfied. That is a real saving and a real risk to the update UI,
+    and it is not what any of the reported problems were about.
 
 ## Deferred
 

@@ -328,6 +328,46 @@ XORGKB
 
 # ------------------------------------------------------------------ services
 say "services"
+
+# ----------------------------------------------------------- display manager
+# The disc booted into GNOME. Not XFCE with some GNOME parts -- GNOME:
+#
+#     $ echo $XDG_CURRENT_DESKTOP ; ps -e -o comm=
+#     ubuntu:GNOME
+#     gdm-session-worker  gnome-session-binary  gnome-shell
+#
+# gdm3 arrives as a dependency of things that are wanted on their own terms --
+# update-manager, update-notifier and network-manager-gnome all list
+# gnome-shell first in an alternation, and gnome-shell pulls ubuntu-session,
+# which pulls gdm3. gdm3's postinst then claims
+# /etc/X11/default-display-manager and the display-manager.service symlink,
+# and "systemctl enable lightdm" below does not take either of them back:
+# enable only creates that symlink when nothing else already owns it.
+#
+# So XFCE was installed, configured, themed and never run. Everything aimed
+# at it was inert -- the XFCE panel layout, the /etc/skel plank config, the
+# xfdesktop launcher permissions, all of R-03. The dock on the left of the
+# screen was GNOME's, and the untrusted-launcher badge was GNOME's, which is
+# why making the file executable changed nothing.
+#
+# gdm3 is purged rather than merely disabled: leaving it installed leaves a
+# postinst that can take the symlink back on any later upgrade. Purging it
+# takes nothing else with it -- checked, because the wider removal does:
+#
+#     apt-get purge -s gdm3         -> 1 to remove
+#     apt-get purge -s gnome-shell  -> 10, including update-manager and
+#                                      network-manager-gnome, which R-07 and
+#                                      R-16 are about
+#
+# gnome-shell therefore stays on the disc. It is dead weight for a system
+# whose session is XFCE, but it is cheaper than losing the update UI and the
+# network applet, and it makes the GNOME option on the software page much
+# smaller than it would otherwise be.
+apt-get purge -y -qq gdm3 >/dev/null 2>&1 || true
+echo "/usr/sbin/lightdm" > /etc/X11/default-display-manager
+echo "set shared/default-x-display-manager lightdm" | debconf-communicate >/dev/null 2>&1 || true
+ln -sf /lib/systemd/system/lightdm.service /etc/systemd/system/display-manager.service
+
 systemctl enable NetworkManager.service    >/dev/null 2>&1 || true
 systemctl enable lightdm.service           >/dev/null 2>&1 || true
 systemctl enable systemd-resolved.service  >/dev/null 2>&1 || true

@@ -362,6 +362,46 @@ Notes
     The group names and descriptions live in the YAML and nothing translates
     them, so a Thai installer session reads this page in English.
 
+    **Page verified, installing not, 2026-09-23.** The page draws, the groups
+    are there in Thai with measured sizes, and GNOME can be ticked -- all
+    seen on screen. Then the install finished cleanly and installed none of
+    it. On the installed system:
+
+        $ dpkg -l gdm3 gnome-session gnome-terminal
+        un  gdm3           <none>
+        un  gnome-session  <none>
+        (gnome-terminal not present)
+
+    and apt's own history for the whole install is two lines, both from
+    mp-finish-install:
+
+        Commandline: apt-get purge -y calamares calamares-settings-ubuntu-common
+        Commandline: apt-get autoremove -y
+
+    So the packages module ran and installed nothing, rather than failing.
+    Two candidates, and the evidence does not yet separate them:
+
+      1. No DNS inside the target. The image's /etc/resolv.conf is a symlink
+         to ../run/systemd/resolve/stub-resolv.conf, and the target's /run is
+         a tmpfs Calamares mounted seconds earlier with nothing in it. The
+         symlink dangles and no name resolves. This is certain to be true;
+         what is not certain is whether it is what stopped the install,
+         because apt failing that way should have produced an error.
+      2. skip_if_no_internet. The packages module skips silently when
+         globalstorage says there is no internet, and that value is set once,
+         by the welcome page's check, which runs seconds after boot and may
+         well have run before NetworkManager had a lease.
+
+    (1) is fixed either way, with a shellprocess step before packages that
+    copies the live session's resolv.conf into the target. (2) is left alone
+    until there is evidence, because guessing at this page has already cost
+    three builds.
+
+    What was actually missing was the means to tell: the Calamares log lives
+    in the live session's tmpfs and is gone at reboot. The preservefiles
+    module now copies it to /var/log/installer/calamares.log on the installed
+    system, so the next run can be read instead of re-run.
+
 ### R-05 — ship TH Sarabun New with the system
 
 Status:   OPEN

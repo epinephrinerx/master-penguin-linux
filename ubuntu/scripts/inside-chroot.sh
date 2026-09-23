@@ -788,18 +788,6 @@ update-desktop-database /usr/share/applications >/dev/null 2>&1 || true
 
 # -------------------------------------------------------------------- tidy up
 say "cleaning up"
-# A world-writable directory without the sticky bit is somewhere any account
-# can replace another's files. /tmp and /var/tmp are the legitimate cases and
-# have the sticky bit; anything else is a mistake, and the build stops rather
-# than shipping it. This is here because "/" and "/usr" were both in this list
-# and nothing noticed until an installed system was examined by hand.
-BADDIRS=$(find / -xdev -type d -perm -0002 ! -perm -1000 -printf '%M %u:%g %p\n' 2>/dev/null)
-if [ -n "$BADDIRS" ]; then
-    echo "world-writable directories in the image:" >&2
-    printf '%s\n' "$BADDIRS" >&2
-    exit 1
-fi
-
 # casper mounts over these at boot, so they have to exist in the image as
 # empty directories. An image without /run is one where adduser cannot take
 # its lock and the live user is never created.
@@ -827,6 +815,24 @@ rm -rf /tmp/* /var/tmp/* /var/lib/apt/lists/* /var/cache/apt/archives/*.deb
 # so apt could resolve names inside the chroot.
 rm -f /etc/resolv.conf
 ln -sf ../run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
+
+# It runs here, after the staging directories under /tmp have been deleted,
+# rather than at the top of the cleanup. Put earlier it failed on
+# /tmp/overlay and /tmp/calamares, which are copies of a working tree on an
+# NTFS volume and are 0777 for the same reason the overlay was -- and which
+# are removed a few lines above, so they were never going to reach the image.
+say "checking permissions"
+# A world-writable directory without the sticky bit is somewhere any account
+# can replace another's files. /tmp and /var/tmp are the legitimate cases and
+# have the sticky bit; anything else is a mistake, and the build stops rather
+# than shipping it. This is here because "/" and "/usr" were both in this list
+# and nothing noticed until an installed system was examined by hand.
+BADDIRS=$(find / -xdev -type d -perm -0002 ! -perm -1000 -printf '%M %u:%g %p\n' 2>/dev/null)
+if [ -n "$BADDIRS" ]; then
+    echo "world-writable directories in the image:" >&2
+    printf '%s\n' "$BADDIRS" >&2
+    exit 1
+fi
 
 rm -f /etc/machine-id /var/lib/dbus/machine-id
 : > /etc/machine-id

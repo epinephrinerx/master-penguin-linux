@@ -65,6 +65,17 @@ fi
 systemctl disable systemd-networkd.service >/dev/null 2>&1
 systemctl mask systemd-networkd-wait-online.service >/dev/null 2>&1
 
+# Put /etc/resolv.conf back to the symlink systemd-resolved expects. The
+# installer replaced it with a real file so that apt could resolve names
+# inside the target, where /run is a tmpfs a few seconds old and the stub
+# resolver has never run. That file is right for the install and wrong for
+# the installed system, which does have systemd-resolved.
+if [ ! -L /etc/resolv.conf ]; then
+    rm -f /etc/resolv.conf
+    ln -sf ../run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
+    log "resolv.conf handed back to systemd-resolved"
+fi
+
 # --------------------------------------------------------------- R-13
 [ -x /usr/local/sbin/mp-make-swap ] && /usr/local/sbin/mp-make-swap
 

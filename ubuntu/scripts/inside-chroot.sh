@@ -433,6 +433,64 @@ autologin-session=xfce
 allow-guest=false
 LIGHTDM
 
+# --------------------------------------------------------------- R-11
+# The XFCE session's own copy of the keyboard layouts.
+#
+# /etc/default/keyboard and /etc/X11/xorg.conf.d/00-keyboard.conf were both
+# correct on the installed system and the session still had one layout:
+#
+#     $ cat /etc/default/keyboard
+#     XKBLAYOUT="us,th"
+#     $ setxkbmap -query
+#     layout:  us
+#     options: grp:lalt_lshift_toggle
+#
+# The toggle survived and the second layout did not, so something applied a
+# layout after X read its configuration -- which under XFCE is xfsettingsd,
+# and it does that from its own channel rather than from /etc/default/keyboard
+# once it decides it owns the setting. The panel indicator agreed: it showed
+# "EN" and nothing to switch to.
+#
+# So the layouts are stated at that layer too, with XkbUseSystemDefaults false
+# so there is no question about which copy wins.
+XFKB=/etc/xdg/xfce4/xfconf/xfce-perchannel-xml
+install -d -m 0755 "$XFKB"
+cat > "$XFKB/keyboard-layout.xml" <<'XFCEKB'
+<?xml version="1.0" encoding="UTF-8"?>
+<channel name="keyboard-layout" version="1.0">
+  <property name="Default" type="empty">
+    <property name="XkbDisable" type="bool" value="false"/>
+    <property name="XkbUseSystemDefaults" type="bool" value="false"/>
+    <property name="XkbLayout" type="string" value="us,th"/>
+    <property name="XkbVariant" type="string" value=","/>
+    <property name="XkbModel" type="string" value="pc105"/>
+    <property name="XkbOptions" type="empty">
+      <property name="Group" type="string" value="grp:lalt_lshift_toggle"/>
+    </property>
+  </property>
+</channel>
+XFCEKB
+chmod 0644 "$XFKB/keyboard-layout.xml"
+
+# --------------------------------------------------------------- R-02
+# The greeter's background.
+#
+# The installed system's login screen came up in Ubuntu's aubergine. The
+# greeter does not use the desktop wallpaper -- lightdm-gtk-greeter has its
+# own background setting, and its default is whatever the distribution's
+# theme package points at.
+install -d -m 0755 /etc/lightdm/lightdm-gtk-greeter.conf.d
+cat > /etc/lightdm/lightdm-gtk-greeter.conf.d/10-mp.conf <<'GREETER'
+[greeter]
+background = /usr/share/backgrounds/master-penguin/mp-wallpaper.png
+theme-name = Greybird
+icon-theme-name = elementary-xfce
+indicators = ~host;~spacer;~clock;~session;~language;~a11y;~power
+clock-format = %H:%M
+position = 50%,center 50%,center
+GREETER
+chmod 0644 /etc/lightdm/lightdm-gtk-greeter.conf.d/10-mp.conf
+
 # --------------------------------------------------------------- R-24
 # No screen lock in the live session.
 #
@@ -486,10 +544,37 @@ find /etc/calamares -type f -exec chmod 0644 {} +
 # Scripts the installer calls in the target system: mp-make-swap (R-13) and
 # mp-finish-install, which undoes the live-session settings and applies the
 # things Calamares has no module for.
+#
+# cp -r, not cp -a, and the difference here is a root escalation.
+#
+# The overlay is a directory tree on an NTFS volume mounted into WSL, where
+# every file and directory reads back as 0777 owned by the build user. cp -a
+# preserves that and applies it to the destination directories it walks
+# through -- including "/" itself. The installed system said so:
+#
+#     WARN: uid is 0 but "/" is owned by 1000
+#     WARN: uid is 0 but "/usr" is owned by 1000
+#     WARN: /usr is world writable!
+#
+# A world-writable /usr on a multi-user machine means any account can replace
+# any binary in it, so the next thing run as root runs someone else's code.
+# cp -r copies the files without carrying the source's ownership or mode onto
+# directories that already exist.
 if [ -d /tmp/overlay ]; then
-    cp -a /tmp/overlay/. /
+    cp -r /tmp/overlay/. /
+    # ...and set what the overlay ships, rather than inheriting anything.
+    chown root:root /usr/local/sbin/mp-make-swap /usr/local/sbin/mp-finish-install
     chmod 0755 /usr/local/sbin/mp-make-swap /usr/local/sbin/mp-finish-install
 fi
+
+# Repair the directories a previous cp -a already damaged, since stage 20 runs
+# against a chroot that may carry them, and normalise the path the overlay
+# walks through whatever happens.
+for d in / /usr /usr/local /usr/local/bin /usr/local/sbin /usr/local/share; do
+    [ -d "$d" ] || continue
+    chown root:root "$d"
+    chmod 0755 "$d"
+done
 
 # A launcher the live session can actually click. pkexec rather than sudo: the
 # installer is a GUI application and needs a polkit prompt, not a terminal.
@@ -703,6 +788,18 @@ update-desktop-database /usr/share/applications >/dev/null 2>&1 || true
 
 # -------------------------------------------------------------------- tidy up
 say "cleaning up"
+# A world-writable directory without the sticky bit is somewhere any account
+# can replace another's files. /tmp and /var/tmp are the legitimate cases and
+# have the sticky bit; anything else is a mistake, and the build stops rather
+# than shipping it. This is here because "/" and "/usr" were both in this list
+# and nothing noticed until an installed system was examined by hand.
+BADDIRS=$(find / -xdev -type d -perm -0002 ! -perm -1000 -printf '%M %u:%g %p\n' 2>/dev/null)
+if [ -n "$BADDIRS" ]; then
+    echo "world-writable directories in the image:" >&2
+    printf '%s\n' "$BADDIRS" >&2
+    exit 1
+fi
+
 # casper mounts over these at boot, so they have to exist in the image as
 # empty directories. An image without /run is one where adduser cannot take
 # its lock and the live user is never created.

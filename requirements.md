@@ -144,6 +144,19 @@ Notes
     It now sets its own background and its own colours rather than inheriting
     either.
 
+    **Verified and one gap found, 2026-09-23.** On an installed system booted
+    from its own disk: the boot splash is the blue gradient with this
+    project's penguin and no Ubuntu text, the desktop wallpaper is the blue
+    gradient, and the installer's sidebar is blue with readable white text.
+    The slideshow reads correctly as well -- blue heading, dark text on a
+    light panel, where before it was near-white text on white.
+
+    The gap: the login screen came up in Ubuntu's aubergine. The greeter does
+    not use the desktop wallpaper -- lightdm-gtk-greeter has its own
+    background setting and its default comes from the distribution's theme
+    package. Now set in
+    /etc/lightdm/lightdm-gtk-greeter.conf.d/10-mp.conf. Unverified.
+
 ### R-03 — the installed desktop should look as close to macOS as XFCE allows
 
 Status:   OPEN
@@ -460,6 +473,19 @@ Notes
     None of this is visible from a booted live session. It only shows up by
     installing and rebooting, which is why it went unnoticed.
 
+    **Verified 2026-09-23 (EFI).** The installed system boots from its own
+    disk with no disc present, under OVMF, using the variable store the
+    installer wrote to -- so efibootmgr did register an entry. The ESP
+    carries the bootloader under this project's name:
+
+        $ ls /boot/efi/EFI/
+        BOOT  master-penguin
+
+    That is the half of R-06 that no live-session test could reach, and it is
+    what the efivarfs mount added in R-21 was for. Secure Boot itself (shim
+    plus a signed grub) is still not done, and BIOS boot of an installed
+    system is still unverified.
+
 ### R-07 — updates people can actually see
 
 Status:   OPEN
@@ -606,6 +632,28 @@ Notes
     a password typed in Thai characters and a login that fails without saying
     why — the same failure point 4 exists to prevent.
 
+    **Not fixed on the installed system, 2026-09-23.** Both system files were
+    correct and the session still had one layout:
+
+        $ cat /etc/default/keyboard
+        XKBLAYOUT="us,th"
+        $ cat /etc/X11/xorg.conf.d/00-keyboard.conf
+        Option "XkbLayout" "us,th"
+        $ setxkbmap -query
+        layout:  us
+        options: grp:lalt_lshift_toggle
+
+    The toggle survived and the second layout did not, so something applied a
+    layout after X had read its configuration. Under XFCE that is
+    xfsettingsd, which takes the setting from its own xfconf channel once it
+    owns it rather than from /etc/default/keyboard. The panel indicator
+    agreed: "EN", with nothing to switch to.
+
+    Now stated at that layer as well, in
+    /etc/xdg/xfce4/xfconf/xfce-perchannel-xml/keyboard-layout.xml with
+    XkbUseSystemDefaults false, so there is no question about which copy wins.
+    Unverified until the next install.
+
 ### R-12 — offer to encrypt the disk during installation
 
 Status:   OPEN
@@ -685,6 +733,19 @@ Notes
     revisiting later as a deliberate feature, not shipped as an untested
     default.
 
+    **Verified 2026-09-23.** On the installed system:
+
+        $ swapon --show
+        NAME       TYPE  SIZE USED PRIO
+        /swapfile  file    4G   0B   -1
+        $ free -h | grep Mem
+        Mem:  3.8Gi
+
+    3.8 GiB of RAM rounds to 4 GB; the 8 GB cap and the quarter-of-the-disk
+    cap (29.5 GB / 4 = 7.3 GB) are both above that, and the 2 GB floor is
+    below it. So 4 GB is the rule applied correctly rather than a number that
+    happens to look reasonable.
+
 ### R-14 — a firewall, and switched on
 
 Status:   OPEN
@@ -711,6 +772,11 @@ Notes
     deny-incoming without allowing mDNS on UDP 5353 silently breaks the
     printing that R-04 puts on the disc as essential — and breaks it in a way
     that looks like a printer fault rather than a firewall rule.
+
+    **Verified 2026-09-23.** `ufw status` on the installed system reports
+    "Status: active". It also reported the world-writable /usr that became
+    R-25, which is the second time a check has been worth more than the thing
+    it was checking.
 
 ### R-15 — the way to start the installer has to be obvious and has to work
 
@@ -813,6 +879,16 @@ Notes
     Worth checking at the same time that systemd-networkd is not also enabled
     and trying to claim the same interface. Both running is a configuration
     that works until it does not, and then does so intermittently.
+
+    **Verified 2026-09-23 on an installed system.** Previously only the live
+    session had been checked.
+
+        $ ip -4 addr show
+        inet 10.0.2.15/24 ... enp0s2
+        $ getent hosts archive.ubuntu.com
+        2a06:bc80:0:1000::18 archive.ubuntu.com
+
+    Address from DHCP, names resolving, on a system installed to disk.
 
 ### R-17 — the stated minimum disk size has to be the real one
 
@@ -1260,6 +1336,67 @@ Verification
     Boot the disc, leave it alone for ten minutes, and find the desktop still
     there and unlocked. Install, reboot, and find that the installed system
     does lock.
+
+### R-25 — nothing in the image may be world-writable
+
+Status:   WIP
+Reported: Found by running `ufw status` on the installed system, which said so
+          in passing.
+Area:     ubuntu/scripts/inside-chroot.sh
+
+Problem
+    On the installed system:
+
+        WARN: uid is 0 but "/" is owned by 1000
+        WARN: uid is 0 but "/usr" is owned by 1000
+        WARN: /usr is world writable!
+        WARN: /usr is group writable!
+
+    and in the chroot the image is built from:
+
+        drwxrwxrwx golf:golf  /
+        drwxrwxrwx golf:golf  /usr
+        drwxrwxrwx golf:golf  /usr/local
+        drwxrwxrwx golf:golf  /usr/local/sbin
+
+    A world-writable /usr means any account on the machine can replace any
+    binary in it, and the next thing run as root runs somebody else's code.
+    On a single-user laptop it is latent; on a shared machine it is a root
+    escalation that needs no exploit.
+
+    The cause is one flag. The overlay tree is on an NTFS volume mounted into
+    WSL, where every file reads back as 0777 owned by the build user, and the
+    copy was
+
+        cp -a /tmp/overlay/. /
+
+    cp -a preserves ownership and mode, and applies them to each destination
+    directory it walks through -- so "/", "/usr", "/usr/local" and
+    "/usr/local/sbin" all took the attributes of a directory on a Windows
+    filesystem. The path is exactly the one the overlay's only two files sit
+    at, which is why those four and nothing else.
+
+    The same fault had already been found and fixed once, for
+    /etc/calamares, and fixed only there. That was the tell and it was
+    missed: if cp -a from this tree damaged one destination it damaged every
+    destination.
+
+Requirement
+    1. The overlay is copied with cp -r, which does not carry the source's
+       ownership or mode onto directories that already exist.
+    2. What the overlay ships is chowned and chmoded explicitly rather than
+       inherited.
+    3. The directories an earlier build already damaged are repaired, because
+       stage 20 runs against an existing chroot.
+    4. The build fails if any world-writable directory without the sticky bit
+       exists in the image. /tmp and /var/tmp are the legitimate cases and
+       have the sticky bit; everything else is a mistake, and a check is the
+       only thing that stops this class of fault coming back a third time.
+
+Verification
+    `find / -xdev -type d -perm -0002 ! -perm -1000` returns nothing, in the
+    chroot and on an installed system. The build stops on its own if it does
+    not.
 
 ## Deferred
 

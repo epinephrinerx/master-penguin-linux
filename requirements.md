@@ -997,6 +997,35 @@ Notes
     candidate with `apt-cache policy` -- the method that catches a package
     with no candidate, which `apt-cache show` does not.
 
+    **Actually fixed 2026-09-23, on the third attempt.** Moving the list under
+    a `groups` key was necessary; inlining it into netinstall.conf was
+    necessary; neither was sufficient. The list is read through `groupsUrl`,
+    and the value "local" is what says "the list is in this file":
+
+        SourceItem SourceItem::makeSourceItem( const QString& groupsUrl, ... )
+        {
+            if ( groupsUrl == QStringLiteral( "local" ) )
+                return SourceItem { QUrl(), configurationMap.value( "groups" ).toList() };
+            ...
+        }
+
+    With no groupsUrl at all the queue is empty, and the module reports that
+    in a line that reads like success:
+
+        Loading netinstall from 0 alternate sources.
+        ViewModule "netinstall@netinstall" loading complete.
+
+    Nothing warns and nothing fails. The page's title and sidebar label come
+    from a different part of the config, so they were correct throughout,
+    which is what made it look like the list was being read and rejected.
+
+    The method that produced the first two wrong answers was grepping the
+    compiled module for key names. It reported that `groupsUrl` does not
+    exist in this build. It does. Reading that version's own source settled in
+    one minute what three builds had not.
+
+    Verified on screen: three groups, ten subgroups, with the measured sizes.
+
 ### R-21 — the target system has to be mounted properly before anything runs in it
 
 Status:   WIP
@@ -1133,6 +1162,104 @@ Notes
     that would otherwise pull gnome-shell in, so apt finds the alternation
     already satisfied. That is a real saving and a real risk to the update UI,
     and it is not what any of the reported problems were about.
+
+### R-23 — "erase disk" has to create a disk to install on
+
+Status:   WIP
+Reported: Found by installing to a blank virtual disk, which had never been done.
+Area:     ubuntu/calamares/modules/partition.conf
+
+Problem
+    With R-21 fixed the install got past the mount stage and failed at the
+    next one, with a message that describes a symptom:
+
+        Failed to unpack image "/cdrom/casper/filesystem.squashfs"
+        rsync failed with error code 11.
+
+    Code 11 is an I/O error. The cause was that there was nowhere to write.
+    "Erase disk" built a GPT table, created the EFI partition, and stopped --
+    the job list goes straight from partitioning to mount:
+
+        Starting job "Creating new gpt partition table on /dev/vda"    ( 4 / 32 )
+        Starting job "Create new 512MiB partition ... with entries EFI" ( 5 / 32 )
+        Starting job "Set flags on partition /dev/vda1"                ( 6 / 32 )
+        Starting job "mount"                                           ( 9 / 32 )
+        Starting job "unpackfs"                                       ( 10 / 32 )
+
+    and afterwards the disk agreed:
+
+        vda    30G  disk
+        └─vda1 512M part /tmp/calamares-root-1iselbvw/boot/efi
+
+    No root partition was ever created, so the install target was an ordinary
+    directory in the live system's tmpfs. rsync wrote 4.7 GB of image into RAM
+    until it ran out.
+
+    The summary page had said so, and it was read as if it had not: it listed
+    four actions, every one of them about the EFI partition, and the disk
+    preview said "พื้นที่ว่าง 29.50 GiB". Free space, not a filesystem.
+
+Requirement
+    1. partition.conf states the layout rather than relying on the default.
+       The documentation says an absent partitionLayout means "a single
+       partition for root that uses 100% of the space". That is not what this
+       build did, and four explicit lines cannot be misread.
+    2. The EFI settings use the "efi:" block. efiSystemPartition and
+       efiSystemPartitionSize are the 3.2 spellings -- the third time this
+       version's renamed keys have cost a build, after sidebarBackground in
+       the branding and groupsFilePath in netinstall.
+    3. The ESP is 512 MiB, not the 300 MiB default: a kernel and initrd are
+       about 110 MB together here, and an ESP that cannot hold two of them
+       turns the first kernel update into an unbootable machine.
+    4. "Erase disk" is pre-selected, rather than two empty radio buttons with
+       a greyed-out Next button and nothing saying why.
+
+Verification
+    The summary page must name the root partition before anything is written:
+
+        Create new 30205MiB partition on /dev/vda (vda) with entries mp-root
+        Install Master Penguin on new ext4 system partition
+
+    Then the install has to finish, and `lsblk` on the installed system has to
+    show a mounted ext4 root.
+
+Notes
+    Every requirement in this file that depends on an installed system --
+    R-06, R-12, R-13, R-01 point 3, R-19 point 3 -- was unverifiable until
+    this was found, because no install had ever produced a filesystem.
+
+### R-24 — the live session must not lock a user out of it
+
+Status:   OPEN
+Reported: Found when the installer disappeared behind a lock screen mid-test.
+Area:     ubuntu/scripts/inside-chroot.sh
+
+Problem
+    The live session blanks and then locks. The live user has no password, so
+    the lock screen asks for something that does not exist:
+
+        master-penguin
+        [ Master Penguin Live ]  [ ปลดล็อค ]
+
+    An empty password happened to be accepted here, which is its own problem
+    -- a lock that anyone can open is not a lock, and a lock that cannot be
+    opened would be worse. Neither is what should happen on a live disc, and
+    it also hides a running installer behind a dialog that looks like a
+    failure.
+
+    Ubuntu's own live sessions disable screen locking for exactly this reason.
+
+Requirement
+    1. No screen lock in the live session: xfce4-screensaver's lock is off
+       and DPMS blanking is off, for the live user only.
+    2. The installed system keeps both, on the normal defaults. This is a
+       live-session setting, not a system-wide one -- a laptop that never
+       locks is a worse fault than the one being fixed.
+
+Verification
+    Boot the disc, leave it alone for ten minutes, and find the desktop still
+    there and unlocked. Install, reboot, and find that the installed system
+    does lock.
 
 ## Deferred
 

@@ -433,6 +433,38 @@ autologin-session=xfce
 allow-guest=false
 LIGHTDM
 
+# --------------------------------------------------------------- R-24
+# No screen lock in the live session.
+#
+# xfce4-screensaver blanks and then locks, and the live user has no password,
+# so the lock screen asks for something that does not exist. During a test it
+# came up over a running installer and looked like a crash. Ubuntu's own live
+# sessions turn this off for the same reason.
+#
+# The test is the user name rather than a file in /etc/skel, because /etc/skel
+# is copied to the account created during installation as well, and a laptop
+# that never locks is a worse fault than the one being fixed here. Only the
+# live user gets this; every account made later keeps the normal defaults.
+install -d -m 0755 /usr/local/bin
+cat > /usr/local/bin/mp-live-nolock <<'NOLOCK'
+#!/bin/sh
+[ "$(id -un)" = "mplive" ] || exit 0
+xset s off -dpms 2>/dev/null || true
+for p in /saver/enabled /lock/enabled /lock/saver-activation/enabled; do
+    xfconf-query -c xfce4-screensaver -p "$p" -n -t bool -s false 2>/dev/null || true
+done
+NOLOCK
+chmod 0755 /usr/local/bin/mp-live-nolock
+
+cat > /etc/xdg/autostart/mp-live-nolock.desktop <<AUTOLOCK
+[Desktop Entry]
+Type=Application
+Name=Live session: no screen lock
+Exec=/usr/local/bin/mp-live-nolock
+OnlyShowIn=XFCE;
+NoDisplay=true
+AUTOLOCK
+
 # ----------------------------------------------------------------- calamares
 say "installing the installer"
 rm -rf /etc/calamares
@@ -676,6 +708,20 @@ say "cleaning up"
 # its lock and the live user is never created.
 mkdir -p /proc /sys /run /tmp /var/tmp /mnt /media
 chmod 1777 /tmp /var/tmp
+# Only the newest kernel. The chroot had two -- 7.0.0-31 and 7.0.0-34 -- and
+# the disc carried both: two initrds at 94 MB each and two module trees, about
+# 300 MB for a kernel nothing would ever boot. 30-squashfs.sh already takes the
+# newest for /casper, so the older one was dead weight on the disc and would
+# have been dead weight on every installed system as well.
+KEEP=$(ls -1 /boot/vmlinuz-* 2>/dev/null | sed "s|.*/vmlinuz-||" | sort -V | tail -1)
+if [ -n "$KEEP" ]; then
+    OLD=$(dpkg-query -W -f='${Package}\n' 'linux-image-*' 'linux-modules-*' 'linux-headers-*' 2>/dev/null | grep -E '^linux-(image|modules|headers)(-unsigned|-extra)?-[0-9]' | grep -v -- "$KEEP" || true)
+    if [ -n "$OLD" ]; then
+        say "removing kernels older than $KEEP"
+        apt-get purge -y -qq $OLD >/dev/null 2>&1 || true
+    fi
+fi
+
 apt-get autoremove -y -qq
 apt-get clean
 rm -f /usr/sbin/policy-rc.d
